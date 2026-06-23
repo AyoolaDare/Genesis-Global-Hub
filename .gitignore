@@ -1,0 +1,127 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Genesis Global CMS — .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── SECRETS — NEVER COMMIT ───────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.staging
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── Python / FastAPI ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Alembic
+# Keep migrations/ tracked, but ignore generated temp files
+backend/alembic/versions/*.pyc
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# ── Flutter / Dart ───────────────────────────────────────────────────────────
+# Flutter build outputs
+frontend/build/
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/pubspec.lock    # Uncomment if you want to unpin dependencies
+
+# Dart
+*.dart.js
+*.dart.js.deps
+*.dart.js.map
+*.info.json
+*.js
+*.js.deps
+*.js.map
+*.dill
+
+# Flutter generated files
+frontend/lib/generated/
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+*.tar
+docker-compose.override.yml
+
+# ── IDEs and Editors ─────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+
+# ── Node (if any tooling is added) ───────────────────────────────────────────
+node_modules/
+.npm/
+
+# ── Temporary files ──────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig

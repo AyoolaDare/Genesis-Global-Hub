@@ -1,0 +1,33 @@
+name: genesis_global_cms
+description: Genesis Global Church Management System
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.4.0
+  riverpod_annotation: ^2.3.0
+  go_router: ^12.0.0
+  dio: ^5.4.0
+  flutter_secure_storage: ^9.0.0
+  cached_network_image: ^3.3.0
+  fl_chart: ^0.65.0
+  intl: ^0.19.0
+  uuid: ^4.0.0
+  shared_preferences: ^2.2.0
+  image_picker: ^1.0.0
+  shimmer: ^3.0.0
+  google_fonts: ^6.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.0
+  riverpod_generator: ^2.3.0
+
+flutter:
+  uses-material-design: true

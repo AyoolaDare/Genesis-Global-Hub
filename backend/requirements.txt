@@ -1,0 +1,50 @@
+# Genesis Global CMS — Backend Dependencies
+# Pin all versions for reproducible builds.
+# Run: pip install -r requirements.txt
+
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12         # Required for form data / file uploads
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10          # PostgreSQL driver (binary = no compile needed)
+alembic==1.14.0                  # Database migrations
+
+# ── Config / Settings ─────────────────────────────────────────────────────────
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# ── Authentication / Security ─────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0  # JWT creation and verification
+passlib[bcrypt]==1.7.4            # Password hashing (bcrypt)
+
+# ── Supabase ──────────────────────────────────────────────────────────────────
+supabase==2.10.0                  # Official Python Supabase client
+httpx==0.27.2                     # Async HTTP for Supabase Auth REST calls
+
+# ── Redis (Upstash — token blacklisting + rate limiting) ──────────────────────
+redis==5.2.1                      # Redis client with TLS support (Upstash-compatible)
+
+# ── Task Queue ────────────────────────────────────────────────────────────────
+celery==5.4.0                     # Background task processing
+celery[redis]==5.4.0              # Redis broker for Celery
+
+# ── Email ─────────────────────────────────────────────────────────────────────
+sendgrid==6.11.0                  # SendGrid Python SDK
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+email-validator==2.2.0            # EmailStr validation for Pydantic
+python-dateutil==2.9.0.post0      # Date parsing utilities
+
+# ── Monitoring / Logging ──────────────────────────────────────────────────────
+structlog==24.4.0                 # Structured logging
+
+# ── Development / Testing (not installed in production) ───────────────────────
+# pytest==8.3.3
+# pytest-asyncio==0.24.0
+# pytest-cov==6.0.0
+# httpx==0.27.2           # Already above (for async test client)
+# factory-boy==3.3.1
