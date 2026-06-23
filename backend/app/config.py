@@ -86,10 +86,6 @@ class Settings(BaseSettings):
             "SUPABASE_ANON_KEY",
             "JWT_SECRET_KEY",
             "UPSTASH_REDIS_URL",
-            "FLUTTERWAVE_SECRET_KEY",
-            "FLUTTERWAVE_ENCRYPTION_KEY",
-            "TERMII_API_KEY",
-            "SENDGRID_API_KEY",
         )
         missing = [
             field
