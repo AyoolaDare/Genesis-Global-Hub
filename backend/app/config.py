@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # ── Application ────────────────────────────────────────────────────────────
     APP_NAME: str = "Genesis Global CMS"
     APP_VERSION: str = "1.0.0"
-    ENVIRONMENT: str = Field(default="development", pattern="^(development|staging|production)$")
+    ENVIRONMENT: str = Field(default="development", pattern="^(development|staging|production|test)$")
 
     # ── Database ───────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/genesis_global_dev"
@@ -115,7 +115,11 @@ class Settings(BaseSettings):
 
     @property
     def is_development(self) -> bool:
-        return self.ENVIRONMENT == "development"
+        return self.ENVIRONMENT in ("development", "test")
+
+    @property
+    def is_test(self) -> bool:
+        return self.ENVIRONMENT == "test"
 
 
 @lru_cache()

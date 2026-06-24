@@ -30,7 +30,8 @@ jobs:
         run: pip install ruff==0.4.4
 
       - name: Lint app/
-        run: cd backend && ruff check app/ --output-format=github
+        working-directory: backend
+        run: ruff check app/ --output-format=github
 
   # ── Backend: Tests ────────────────────────────────────────────────────────────
   test-backend:
@@ -61,13 +62,15 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
-        run: cd backend && pip install -r requirements.txt
+        working-directory: backend
+        run: pip install -r requirements.txt
 
       - name: Install test dependencies
         run: pip install pytest==8.3.3 pytest-asyncio==0.24.0 pytest-cov==6.0.0 factory-boy==3.3.1
 
       - name: Run tests
-        run: cd backend && pytest tests/ -v --tb=short --cov=app --cov-report=xml
+        working-directory: backend
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=xml
         env:
           # Use Supabase test project or a local Postgres for CI
           DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
@@ -109,24 +112,27 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        run: cd frontend && flutter pub get
+        working-directory: frontend
+        run: flutter pub get
 
       - name: Run dart analyze
-        run: cd frontend && flutter analyze --no-fatal-infos
+        working-directory: frontend
+        run: flutter analyze --no-fatal-infos
 
       - name: Build Flutter Web (CanvasKit renderer)
+        working-directory: frontend
         run: |
-          cd frontend && flutter build web \
+          flutter build web \
             --release \
             --web-renderer canvaskit \
             --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'https://genesis-global-api.onrender.com' }}
 
       - name: Check build output size
+        working-directory: frontend
         run: |
-          BUILD_SIZE=$(du -sh frontend/build/web | cut -f1)
+          BUILD_SIZE=$(du -sh build/web | cut -f1)
           echo "Flutter web build size: $BUILD_SIZE"
-          # Warn if over 50MB (indicative of unoptimized assets)
-          BUILD_BYTES=$(du -sb frontend/build/web | cut -f1)
+          BUILD_BYTES=$(du -sb build/web | cut -f1)
           if [ "$BUILD_BYTES" -gt 52428800 ]; then
             echo "WARNING: Build exceeds 50MB. Review asset sizes."
           fi
@@ -145,9 +151,10 @@ jobs:
           python-version: '3.11'
 
       - name: Audit Python dependencies with pip-audit
+        working-directory: backend
         run: |
           pip install pip-audit
-          cd backend && pip-audit -r requirements.txt --ignore-vuln PYSEC-2022-42974 || true
+          pip-audit -r requirements.txt --ignore-vuln PYSEC-2022-42974 || true
         # "|| true" prevents blocking deploys on advisories without fixes.
         # Remove when all vulnerabilities have upstream fixes.
 
