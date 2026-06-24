@@ -8,9 +8,7 @@ Handles:
 """
 import asyncio
 import logging
-import uuid
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
 
 from app.workers.celery_app import celery_app
 from app.database import get_db_context
@@ -102,8 +100,6 @@ def check_overdue_payments() -> dict:
 
     stats = {"reminders_sent": 0, "overdue_alerts_sent": 0, "escalations_sent": 0}
     today = date.today()
-    three_days_from_now = today + timedelta(days=3)
-    seven_days_ago = today - timedelta(days=7)
     thirty_days_ago = today - timedelta(days=30)
 
     try:
@@ -293,7 +289,7 @@ def send_overdue_payment_alerts() -> dict:
                     admin_email=None,
                     subject=f"Weekly Overdue Sponsorship Report — {len(summary_lines)} Sponsors",
                     message=(
-                        f"The following sponsors are 7+ days overdue:\n\n"
+                        "The following sponsors are 7+ days overdue:\n\n"
                         + "\n".join(summary_lines)
                         + "\n\nPlease follow up urgently."
                     ),

@@ -6,10 +6,12 @@ Covers:
   - PendingMemberData → pending_member_data table
   - MemberDuplicate   → member_duplicates table
 """
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -26,6 +28,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.structure import MemberAssignment
 
 
 # ── Enums ──────────────────────────────────────────────────────────────────────

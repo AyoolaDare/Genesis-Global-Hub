@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     # ── Termii (SMS) ──────────────────────────────────────────────────────────
     TERMII_API_KEY: str = ""
-    TERMII_SENDER_ID: str = "GenesisGlobal"
+    TERMII_SENDER_ID: str = "GenesisGL"
 
     # ── SendGrid ──────────────────────────────────────────────────────────────
     SENDGRID_API_KEY: str = ""

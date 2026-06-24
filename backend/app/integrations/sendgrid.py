@@ -9,10 +9,9 @@ Handles transactional emails:
   - Follow-up escalation alerts
 """
 import logging
-from typing import Optional
 
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, To, Content
+from sendgrid.helpers.mail import Mail
 
 from app.config import get_settings
 

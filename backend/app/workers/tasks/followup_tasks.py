@@ -322,7 +322,6 @@ def flag_inactive_members() -> dict:
     from app.models.member import MemberModel, MemberStatusEnum
     from app.models.attendance import AttendanceRecord, Meeting
     from app.models.follow_up import FollowUpContact, FollowUpTask, FollowUpStageEnum
-    from app.models.notification import NotificationQueue
     from app.auth.models import AppUser, UserRole
 
     stats = {"flagged": 0, "already_in_followup": 0, "errors": 0}

@@ -13,7 +13,6 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, oauth2_scheme

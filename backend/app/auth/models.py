@@ -1,32 +1,22 @@
 """
-Genesis Global CMS — SQLAlchemy ORM Models for Auth Domain
+Genesis Global CMS - SQLAlchemy ORM models for the auth domain.
 
-Maps to the existing Supabase PostgreSQL schema created by the
-DatabaseArchitect. DO NOT run migrations from here — the schema
-already exists. These models are read-only mirrors for the ORM layer.
+These map to the Supabase PostgreSQL schema. Database migrations live in the
+database folder; these classes are the ORM layer used by the API.
 """
 import enum
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import (
-    Boolean,
-    DateTime,
-    Enum,
-    ForeignKey,
-    String,
-    Text,
-    UniqueConstraint,
-)
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
+from app.models.member import MemberModel
 
-
-# ── Enums (must match PostgreSQL enum definitions exactly) ─────────────────────
 
 class UserRole(str, enum.Enum):
     SUPER_ADMIN = "SUPER_ADMIN"
@@ -54,23 +44,8 @@ class AuditAction(str, enum.Enum):
     VIEW_SENSITIVE = "VIEW_SENSITIVE"
 
 
-class MemberStatus(str, enum.Enum):
-    ACTIVE = "ACTIVE"
-    INACTIVE = "INACTIVE"
-    PENDING = "PENDING"
-    PENDING_DUPLICATE_CHECK = "PENDING_DUPLICATE_CHECK"
-    PENDING_INFO_REQUESTED = "PENDING_INFO_REQUESTED"
-    REJECTED = "REJECTED"
-    MERGED = "MERGED"
-
-
-# ── AppUser ────────────────────────────────────────────────────────────────────
-
 class AppUser(Base):
-    """
-    Maps to ``app_users`` table.
-    References Supabase ``auth.users`` via the ``id`` column (same UUID).
-    """
+    """Maps to app_users; id matches Supabase auth.users.id."""
 
     __tablename__ = "app_users"
 
@@ -80,11 +55,7 @@ class AppUser(Base):
         default=uuid.uuid4,
         comment="Matches auth.users.id from Supabase Auth",
     )
-    email: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        index=True,
-    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role", create_type=False),
         nullable=False,
@@ -118,9 +89,8 @@ class AppUser(Base):
         onupdate=func.now(),
     )
 
-    # Relationships
-    member: Mapped[Optional["MemberModel"]] = relationship(
-        "MemberModel",
+    member: Mapped[Optional[MemberModel]] = relationship(
+        MemberModel,
         foreign_keys=[member_id],
         lazy="select",
     )
@@ -130,56 +100,14 @@ class AppUser(Base):
         lazy="dynamic",
     )
 
-    __table_args__ = (
-        UniqueConstraint("email", name="uq_app_users_email"),
-    )
+    __table_args__ = (UniqueConstraint("email", name="uq_app_users_email"),)
 
     def __repr__(self) -> str:
         return f"<AppUser id={self.id} email={self.email} role={self.role}>"
 
 
-# ── Member (partial — for FK resolution only) ─────────────────────────────────
-
-class Member(Base):
-    """
-    Partial mapping of ``members`` table — only columns needed for auth.
-    Full member model lives in the members domain module.
-    """
-
-    __tablename__ = "members"
-    __table_args__ = {"extend_existing": True}
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    membership_status: Mapped[MemberStatus] = mapped_column(
-        Enum(MemberStatus, name="member_status", create_type=False),
-        nullable=False,
-        default=MemberStatus.PENDING,
-    )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    # Reverse relationship
-    app_user: Mapped[Optional["AppUser"]] = relationship(
-        "AppUser",
-        back_populates="member",
-        foreign_keys="AppUser.member_id",
-        uselist=False,
-    )
-
-    def __repr__(self) -> str:
-        return f"<Member id={self.id} name={self.full_name}>"
-
-
-# ── AuditLog ───────────────────────────────────────────────────────────────────
-
 class AuditLog(Base):
-    """
-    Maps to ``audit_logs`` — append-only table (DB triggers block UPDATE/DELETE).
-    """
+    """Maps to audit_logs, an append-only audit table."""
 
     __tablename__ = "audit_logs"
 
@@ -211,9 +139,8 @@ class AuditLog(Base):
         index=True,
     )
 
-    # Relationship
-    user: Mapped[Optional["AppUser"]] = relationship(
-        "AppUser",
+    user: Mapped[Optional[AppUser]] = relationship(
+        AppUser,
         back_populates="audit_logs",
         foreign_keys=[user_id],
     )

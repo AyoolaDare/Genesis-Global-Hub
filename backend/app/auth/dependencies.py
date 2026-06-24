@@ -9,7 +9,6 @@ Provides reusable dependency functions for:
 """
 import logging
 import uuid
-from functools import wraps
 from typing import Callable, Optional
 
 from fastapi import Depends, Request
@@ -250,8 +249,6 @@ class ScopeFilter:
         For scoped roles: filters by member_assignments to authorised
                           departments, teams, or groups.
         """
-        from app.models.member import MemberModel
-
         if cls.is_global_role(user):
             return query
 
@@ -305,7 +302,6 @@ class ScopeFilter:
         if not dept_ids:
             return query.filter(False)
 
-        from sqlalchemy import cast, String
         return query.filter(
             query.column_descriptions[0]["entity"].department_id.in_(dept_ids)
         )

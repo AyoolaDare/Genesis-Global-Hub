@@ -81,7 +81,6 @@ def _pick_follow_up_worker(db: Session) -> Optional[AppUser]:
     from app.auth.models import AppUser
 
     # Count active tasks per follow-up worker
-    from sqlalchemy import func
     worker_task_counts = (
         db.query(
             FollowUpTask.assigned_to,
@@ -101,7 +100,7 @@ def _pick_follow_up_worker(db: Session) -> Optional[AppUser]:
         .outerjoin(worker_task_counts, AppUser.id == worker_task_counts.c.assigned_to)
         .filter(
             AppUser.role == UserRole.FOLLOW_UP,
-            AppUser.is_active == True,
+            AppUser.is_active.is_(True),
         )
         .order_by(
             func.coalesce(worker_task_counts.c.task_count, 0).asc()
@@ -156,7 +155,7 @@ def create_task(
     db: Session,
 ) -> FollowUpTask:
     # Verify contact exists
-    contact = get_contact(data.contact_id, db)
+    get_contact(data.contact_id, db)
 
     task = FollowUpTask(
         contact_id=data.contact_id,
@@ -385,7 +384,7 @@ def create_note(
 
 def list_task_notes(task_id: uuid.UUID, db: Session) -> list[FollowUpNote]:
     # Verify task exists
-    task = get_task(task_id, db)
+    get_task(task_id, db)
     return (
         db.query(FollowUpNote)
         .filter(FollowUpNote.task_id == task_id)

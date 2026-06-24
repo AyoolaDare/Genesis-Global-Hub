@@ -22,7 +22,6 @@ from typing import Optional
 
 from fastapi import Request, Response
 from jose import JWTError, jwt
-from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.types import ASGIApp
 

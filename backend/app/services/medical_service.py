@@ -9,7 +9,7 @@ CRITICAL SECURITY RULES:
   5. member_link_id is set silently when name+phone matches a member
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import func, or_

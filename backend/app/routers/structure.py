@@ -2,7 +2,6 @@
 Genesis Global CMS — Structure Router (Departments / Teams / Groups)
 """
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
@@ -11,17 +10,14 @@ from app.auth.dependencies import get_current_user, require_role
 from app.auth.models import AppUser
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
-from app.schemas.member import MemberSummary
 from app.schemas.structure import (
     AssignHeadRequest,
     AssignLeaderRequest,
     DepartmentCreate,
     DepartmentUpdate,
     GroupCreate,
-    GroupUpdate,
     MemberAssignRequest,
     TeamCreate,
-    TeamUpdate,
 )
 from app.services.structure_service import (
     assign_department_head,
@@ -42,8 +38,6 @@ from app.services.structure_service import (
     list_teams,
     remove_assignment,
     update_department,
-    update_group,
-    update_team,
 )
 
 

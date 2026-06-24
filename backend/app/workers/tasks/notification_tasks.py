@@ -464,7 +464,6 @@ def process_notification_queue() -> dict:
     """
     from app.models.notification import NotificationQueue
     from app.integrations.termii import termii
-    from app.integrations.sendgrid import sendgrid_client
 
     stats = {"processed": 0, "sent": 0, "failed": 0}
 

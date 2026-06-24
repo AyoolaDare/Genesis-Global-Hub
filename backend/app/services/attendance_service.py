@@ -11,7 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser
-from app.core.exceptions import DuplicateRecord, NotFound
+from app.core.exceptions import NotFound
 from app.models.attendance import AttendanceRecord, AttendanceStatusEnum, Meeting
 from app.models.member import MemberModel
 from app.schemas.attendance import MarkAttendanceRequest, MeetingCreate
@@ -213,7 +213,7 @@ def get_attendance_stats(
     meeting_ids = [m.id for m in meetings]
 
     # Get all attendance records for these meetings
-    records = (
+    _ = (
         db.query(
             AttendanceRecord.member_id,
             MemberModel.full_name,

@@ -22,7 +22,6 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (
-    ScopeFilter,
     get_current_user,
     require_role,
 )
@@ -33,10 +32,8 @@ from app.database import get_db
 from app.schemas.member import (
     ApproveRequest,
     MemberCreate,
-    MemberDuplicateResponse,
     MemberSearchRequest,
     MemberUpdate,
-    MemberWithPendingResponse,
     MergeRequest,
     RejectRequest,
     RequestInfoRequest,

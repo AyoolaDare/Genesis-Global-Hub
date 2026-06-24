@@ -7,11 +7,10 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser, UserRole
-from app.core.exceptions import DuplicateRecord, NotFound, PermissionDenied
+from app.core.exceptions import DuplicateRecord, NotFound
 from app.models.kpi import KpiDefinition, KpiRecord
 from app.schemas.kpi import KpiDefinitionCreate, KpiDefinitionUpdate, KpiRecordCreate
 
@@ -126,7 +125,7 @@ def create_kpi_record(
     db: Session,
 ) -> KpiRecord:
     # Verify KPI definition exists
-    kpi_def = get_kpi_definition(data.kpi_definition_id, db)
+    get_kpi_definition(data.kpi_definition_id, db)
 
     # Check for existing record in same period
     existing = db.query(KpiRecord).filter(
@@ -135,7 +134,7 @@ def create_kpi_record(
     ).first()
     if existing:
         raise DuplicateRecord(
-            message=f"A KPI record for this period already exists. Use update instead."
+            message="A KPI record for this period already exists. Use update instead."
         )
 
     record = KpiRecord(
@@ -185,7 +184,7 @@ def get_kpi_dashboard(
         KpiDefinition.entity_type == entity_type,
         KpiDefinition.entity_id == entity_id,
         KpiDefinition.deleted_at.is_(None),
-        KpiDefinition.is_active == True,
+        KpiDefinition.is_active.is_(True),
     ).all()
 
     dashboard_items = []

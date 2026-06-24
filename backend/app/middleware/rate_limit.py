@@ -18,7 +18,6 @@ Rate limit headers are included in all responses:
 """
 import logging
 import time
-from typing import Optional
 
 import redis as redis_lib
 from fastapi import Request, Response

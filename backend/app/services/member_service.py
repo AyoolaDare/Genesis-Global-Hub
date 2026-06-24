@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import or_, text
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,6 @@ from app.core.exceptions import DuplicateRecord, NotFound, PermissionDenied
 from app.models.member import MemberDuplicate, MemberModel, MemberStatusEnum, PendingMemberData
 from app.schemas.member import (
     MemberCreate,
-    MemberResponse,
     MemberUpdate,
 )
 from app.services.dedup_service import normalize_phone, run_dedup_check

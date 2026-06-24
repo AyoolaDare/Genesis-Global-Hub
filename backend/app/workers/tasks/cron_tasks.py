@@ -8,7 +8,7 @@ categories:
   - General system health digest
 """
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 
 from app.workers.celery_app import celery_app
 from app.database import get_db_context
@@ -30,7 +30,7 @@ def send_quarterly_review_reminders() -> dict:
     """
     from app.models.hr import Worker
     from app.models.structure import Department
-    from app.auth.models import AppUser, UserRole
+    from app.auth.models import AppUser
     from app.workers.tasks.notification_tasks import send_admin_notification
 
     stats: dict = {"notifications_sent": 0, "departments_notified": 0}

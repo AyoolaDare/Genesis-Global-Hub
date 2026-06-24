@@ -36,7 +36,7 @@ services:
       - FLUTTERWAVE_SECRET_KEY=${FLUTTERWAVE_SECRET_KEY:-FLWSECK_TEST-placeholder}
       - FLUTTERWAVE_ENCRYPTION_KEY=${FLUTTERWAVE_ENCRYPTION_KEY:-placeholder}
       - TERMII_API_KEY=${TERMII_API_KEY:-placeholder}
-      - TERMII_SENDER_ID=${TERMII_SENDER_ID:-GenesisGlobal}
+      - TERMII_SENDER_ID=${TERMII_SENDER_ID:-GenesisGL}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-SG.placeholder}
       - FROM_EMAIL=${FROM_EMAIL:-dev@localhost}
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5000,http://localhost:8080
@@ -73,7 +73,7 @@ services:
       - UPSTASH_REDIS_URL=${UPSTASH_REDIS_URL:-redis://redis:6379}
       - FLUTTERWAVE_SECRET_KEY=${FLUTTERWAVE_SECRET_KEY:-placeholder}
       - TERMII_API_KEY=${TERMII_API_KEY:-placeholder}
-      - TERMII_SENDER_ID=${TERMII_SENDER_ID:-GenesisGlobal}
+      - TERMII_SENDER_ID=${TERMII_SENDER_ID:-GenesisGL}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-placeholder}
       - FROM_EMAIL=${FROM_EMAIL:-dev@localhost}
     volumes:
@@ -99,7 +99,7 @@ services:
       - UPSTASH_REDIS_URL=${UPSTASH_REDIS_URL:-redis://redis:6379}
       - FLUTTERWAVE_SECRET_KEY=${FLUTTERWAVE_SECRET_KEY:-placeholder}
       - TERMII_API_KEY=${TERMII_API_KEY:-placeholder}
-      - TERMII_SENDER_ID=${TERMII_SENDER_ID:-GenesisGlobal}
+      - TERMII_SENDER_ID=${TERMII_SENDER_ID:-GenesisGL}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-placeholder}
       - FROM_EMAIL=${FROM_EMAIL:-dev@localhost}
     volumes:

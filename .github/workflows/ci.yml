@@ -77,11 +77,11 @@ jobs:
           JWT_SECRET_KEY: test-secret-key-minimum-32-characters-for-ci
           JWT_ALGORITHM: HS256
           UPSTASH_REDIS_URL: redis://localhost:6379
-          FLUTTERWAVE_SECRET_KEY: FLWSECK_TEST-ci-placeholder
+          FLUTTERWAVE_SECRET_KEY: flutterwave-secret-key-for-ci-only
           FLUTTERWAVE_ENCRYPTION_KEY: ci-placeholder
           TERMII_API_KEY: ci-placeholder
-          TERMII_SENDER_ID: GenesisGlobal
-          SENDGRID_API_KEY: SG.ci-placeholder
+          TERMII_SENDER_ID: GenesisGL
+          SENDGRID_API_KEY: sendgrid-api-key-for-ci-only
           FROM_EMAIL: ci@test.example
           ALLOWED_ORIGINS: http://localhost:3000
           ENVIRONMENT: test

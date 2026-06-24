@@ -17,7 +17,6 @@ from typing import Optional
 
 from sqlalchemy import (
     ARRAY,
-    Boolean,
     Date,
     DateTime,
     Enum,

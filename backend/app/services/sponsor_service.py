@@ -6,15 +6,15 @@ CRITICAL:
   - Only FINANCE_ADMIN/SUPER_ADMIN can access this domain
 """
 import uuid
-from datetime import datetime, date, timedelta
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, or_, extract, case
+from sqlalchemy import func, or_, extract
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser
-from app.core.exceptions import DuplicateRecord, NotFound
-from app.models.sponsor import PaymentStatusEnum, Sponsor, SponsorPayment, SponsorshipTierEnum
+from app.core.exceptions import NotFound
+from app.models.sponsor import PaymentStatusEnum, Sponsor, SponsorPayment
 from app.models.member import MemberModel
 from app.schemas.sponsor import SponsorCreate, SponsorPaymentCreate, SponsorUpdate
 from app.services.dedup_service import normalize_phone
@@ -266,7 +266,7 @@ def get_finance_dashboard(db: Session) -> dict:
 
     active_sponsors = db.query(func.count(Sponsor.id)).filter(
         Sponsor.deleted_at.is_(None),
-        Sponsor.is_active == True,
+        Sponsor.is_active.is_(True),
     ).scalar() or 0
 
     monthly_revenue = db.query(func.coalesce(func.sum(SponsorPayment.amount), 0)).filter(
@@ -298,7 +298,7 @@ def get_finance_dashboard(db: Session) -> dict:
         )
         .filter(
             Sponsor.deleted_at.is_(None),
-            Sponsor.is_active == True,
+            Sponsor.is_active.is_(True),
             SponsorPayment.next_due_date.isnot(None),
             SponsorPayment.next_due_date < now.date(),
         )

@@ -108,8 +108,8 @@ Copy these three values — you will use them as environment variables:
 
 ```
 Project URL:          SUPABASE_URL     = https://[your-ref].supabase.co
-anon public key:      SUPABASE_ANON_KEY = eyJ...
-service_role key:     SUPABASE_SERVICE_KEY = eyJ...   (keep this secret)
+anon public key:      SUPABASE_ANON_KEY = your-supabase-publishable-or-anon-key
+service_role key:     SUPABASE_SERVICE_KEY = your-supabase-service-role-key   (keep this secret)
 ```
 
 Navigate to: **Project Settings → Database → Connection string → URI**
@@ -227,7 +227,7 @@ For Genesis Global at <500 members, daily Redis usage will be roughly:
 4. For production, complete KYC and copy "Live Secret Key" and "Live Encryption Key"
 
 ```
-FLUTTERWAVE_SECRET_KEY     = FLWSECK_TEST-xxxxx   (or FLWSECK-xxxxx for live)
+FLUTTERWAVE_SECRET_KEY     = your-flutterwave-secret-key
 FLUTTERWAVE_ENCRYPTION_KEY = your-encryption-key
 ```
 
@@ -268,7 +268,7 @@ FLUTTERWAVE_ENCRYPTION_KEY = your-encryption-key
 3. Copy your API key
 
 ```
-TERMII_API_KEY = TLbb_xxxxx
+TERMII_API_KEY = your-termii-api-key
 ```
 
 ### 5.3 Register Sender ID
@@ -325,7 +325,7 @@ Alternatively, for quick setup:
 7. COPY THE KEY NOW — it is only shown once
 
 ```
-SENDGRID_API_KEY = SG.xxxxx
+SENDGRID_API_KEY = your-sendgrid-api-key
 FROM_EMAIL       = noreply@genesisglob.al
 ```
 
@@ -366,13 +366,13 @@ For the `genesis-global-api` service:
 |----------|-------|----------------|
 | `DATABASE_URL` | `postgresql+psycopg2://postgres:...@db.[ref].supabase.co:6543/postgres?sslmode=require&pgbouncer=true` | Supabase → Project Settings → Database → Connection String |
 | `SUPABASE_URL` | `https://[ref].supabase.co` | Supabase → Project Settings → API |
-| `SUPABASE_SERVICE_KEY` | `eyJ...` | Supabase → Project Settings → API → service_role key |
-| `SUPABASE_ANON_KEY` | `eyJ...` | Supabase → Project Settings → API → anon public key |
+| `SUPABASE_SERVICE_KEY` | `your-supabase-service-role-key` | Supabase → Project Settings → API → service_role key |
+| `SUPABASE_ANON_KEY` | `your-supabase-publishable-or-anon-key` | Supabase → Project Settings → API → anon public key |
 | `UPSTASH_REDIS_URL` | `rediss://:[pw]@[host].upstash.io:6379` | Upstash Console → Database → Details |
-| `FLUTTERWAVE_SECRET_KEY` | `FLWSECK-...` | Flutterwave → Settings → API Keys |
+| `FLUTTERWAVE_SECRET_KEY` | `your-flutterwave-secret-key` | Flutterwave → Settings → API Keys |
 | `FLUTTERWAVE_ENCRYPTION_KEY` | `...` | Flutterwave → Settings → API Keys |
-| `TERMII_API_KEY` | `TLbb_...` | Termii → Settings → API Key |
-| `SENDGRID_API_KEY` | `SG....` | SendGrid → Settings → API Keys |
+| `TERMII_API_KEY` | `your-termii-api-key` | Termii → Settings → API Key |
+| `SENDGRID_API_KEY` | `your-sendgrid-api-key` | SendGrid → Settings → API Keys |
 | `FROM_EMAIL` | `noreply@genesisglob.al` | Your verified sender |
 | `ALLOWED_ORIGINS` | *(add Vercel URL after frontend deploy)* | Update in Step 9 |
 

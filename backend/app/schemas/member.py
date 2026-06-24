@@ -5,9 +5,9 @@ import uuid
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models.member import GenderEnum, MaritalStatusEnum, MemberStatusEnum
+from app.models.member import GenderEnum, MaritalStatusEnum
 
 
 # ── Base Config ────────────────────────────────────────────────────────────────

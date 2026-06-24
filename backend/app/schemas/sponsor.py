@@ -11,7 +11,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.sponsor import (
     PaymentMethodEnum,
-    PaymentStatusEnum,
     PreferredChannelEnum,
     SponsorshipTierEnum,
 )

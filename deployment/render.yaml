@@ -48,7 +48,7 @@ services:
       - key: TERMII_API_KEY
         sync: false
       - key: TERMII_SENDER_ID
-        value: "GenesisGlobal"
+        value: "GenesisGL"
 
       # ── SendGrid (Email) — set manually ───────────────────────────────────────
       - key: SENDGRID_API_KEY

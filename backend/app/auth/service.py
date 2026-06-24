@@ -18,13 +18,10 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser, AuditLog, AuditAction
-from app.auth.schemas import TokenResponse, UserSummary
 from app.config import settings
 from app.core.exceptions import (
     AuthenticationFailed,
-    NotFound,
     ServiceUnavailable,
-    ValidationError,
 )
 from app.core.security import (
     blacklist_token,
@@ -253,8 +250,6 @@ async def login(
     scope = build_user_scope(user.id, db)
 
     # Step 5: Create JWT tokens
-    member_name: Optional[str] = user.member.full_name if user.member else None
-
     token_data = {
         "sub": str(user.id),
         "email": user.email,
@@ -287,6 +282,8 @@ async def login(
     # Clear rate limit counter on success
     if ip_address:
         clear_auth_rate_limit(ip_address)
+
+    member_name: Optional[str] = user.member.full_name if user.member else None
 
     return {
         "access_token": access_token,
@@ -327,8 +324,6 @@ async def refresh_access_token(refresh_token: str, db: Session) -> dict:
 
     # Rebuild scope in case assignments changed since last login
     scope = build_user_scope(user.id, db)
-
-    member_name: Optional[str] = user.member.full_name if user.member else None
 
     token_data = {
         "sub": str(user.id),

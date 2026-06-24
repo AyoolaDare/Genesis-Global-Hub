@@ -10,7 +10,7 @@ Handles:
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 import redis as redis_lib
 from jose import ExpiredSignatureError, JWTError, jwt
@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.exceptions import (
-    AccountInactive,
     TokenBlacklisted,
     TokenExpired,
     TokenInvalid,

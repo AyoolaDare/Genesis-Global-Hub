@@ -31,7 +31,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, require_role
+from app.auth.dependencies import require_role
 from app.auth.models import AppUser
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
@@ -251,18 +251,18 @@ async def list_leave_endpoint(
     items, total = list_leave_requests(worker_id, db, page, per_page)
     data = [
         {
-            "id": l.id,
-            "worker_id": l.worker_id,
-            "leave_type": l.leave_type,
-            "start_date": l.start_date,
-            "end_date": l.end_date,
-            "reason": l.reason,
-            "status": l.status,
-            "approved_by": l.approved_by,
-            "approved_at": l.approved_at,
-            "created_at": l.created_at,
+            "id": leave.id,
+            "worker_id": leave.worker_id,
+            "leave_type": leave.leave_type,
+            "start_date": leave.start_date,
+            "end_date": leave.end_date,
+            "reason": leave.reason,
+            "status": leave.status,
+            "approved_by": leave.approved_by,
+            "approved_at": leave.approved_at,
+            "created_at": leave.created_at,
         }
-        for l in items
+        for leave in items
     ]
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 

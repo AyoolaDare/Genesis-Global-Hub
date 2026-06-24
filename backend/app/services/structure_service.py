@@ -5,7 +5,6 @@ Business logic for departments, teams, groups, and member assignments.
 """
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -75,7 +74,7 @@ def update_department(
         db.flush()
     except IntegrityError:
         db.rollback()
-        raise DuplicateRecord(message=f"Department name already in use.")
+        raise DuplicateRecord(message="Department name already in use.")
     return dept
 
 
