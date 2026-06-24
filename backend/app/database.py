@@ -13,28 +13,42 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+_engine_kwargs = {
+    "pool_pre_ping": True,
+    "echo": settings.is_development,
+}
+
+if _is_sqlite:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_kwargs.update(
+        {
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_timeout": 30,
+            "pool_recycle": 1800,
+            "connect_args": {
+                "connect_timeout": 10,
+                "options": "-c timezone=UTC",
+            },
+        }
+    )
+
 # ── Engine ─────────────────────────────────────────────────────────────────────
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_pre_ping=True,          # verify connections before use
-    pool_size=10,
-    max_overflow=20,
-    pool_timeout=30,
-    pool_recycle=1800,           # recycle connections every 30 min
-    echo=settings.is_development,  # only log SQL in dev
-    connect_args={
-        "connect_timeout": 10,
-        "options": "-c timezone=UTC",
-    },
+    **_engine_kwargs,
 )
 
 
-@event.listens_for(engine, "connect")
-def set_search_path(dbapi_connection, connection_record):  # noqa: ARG001
-    """Ensure every connection uses the public schema."""
-    cursor = dbapi_connection.cursor()
-    cursor.execute("SET search_path TO public")
-    cursor.close()
+if not _is_sqlite:
+    @event.listens_for(engine, "connect")
+    def set_search_path(dbapi_connection, connection_record):  # noqa: ARG001
+        """Ensure every connection uses the public schema."""
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET search_path TO public")
+        cursor.close()
 
 
 # ── Session Factory ────────────────────────────────────────────────────────────

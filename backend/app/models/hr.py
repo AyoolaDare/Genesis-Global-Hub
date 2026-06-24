@@ -22,6 +22,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -89,8 +90,8 @@ class Worker(Base):
     start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
     time_commitment_hours_per_week: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    skills: Mapped[Optional[list]] = mapped_column(ARRAY(Text), nullable=True)
-    interests: Mapped[Optional[list]] = mapped_column(ARRAY(Text), nullable=True)
+    skills: Mapped[Optional[list]] = mapped_column(ARRAY(Text).with_variant(JSON, "sqlite"), nullable=True)
+    interests: Mapped[Optional[list]] = mapped_column(ARRAY(Text).with_variant(JSON, "sqlite"), nullable=True)
     # NEVER expose member_link_id in API responses
     member_link_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True, comment="Backend-only. NEVER expose in API responses."

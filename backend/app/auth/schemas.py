@@ -19,7 +19,7 @@ class LoginRequest(BaseModel):
     """POST /api/v1/auth/login"""
 
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
 
     model_config = {"str_strip_whitespace": True}
 

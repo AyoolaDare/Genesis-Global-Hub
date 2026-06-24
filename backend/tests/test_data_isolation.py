@@ -78,8 +78,9 @@ def test_member_link_id_absent_from_single_patient_response(client, db, medical_
 
 def test_member_link_id_absent_from_sponsors_response(client, db, finance_user, finance_token):
     """Sponsor API responses must never include member_link_id."""
+    member = create_active_member(db, "Sponsor Linked Member")
     sponsor = create_sponsor(db, full_name="Linked Sponsor", created_by=finance_user.id)
-    sponsor.member_link_id = uuid.uuid4()
+    sponsor.member_link_id = member.id
     db.flush()
 
     response = client.get("/api/v1/sponsors", headers=auth_headers(finance_token))
@@ -93,8 +94,9 @@ def test_member_link_id_absent_from_sponsors_response(client, db, finance_user, 
 
 def test_member_link_id_absent_from_sponsor_detail_response(client, db, finance_user, finance_token):
     """Individual sponsor GET must not include member_link_id."""
+    member = create_active_member(db, "Sponsor Detail Linked Member")
     sponsor = create_sponsor(db, full_name="Detail Link Sponsor", created_by=finance_user.id)
-    sponsor.member_link_id = uuid.uuid4()
+    sponsor.member_link_id = member.id
     db.flush()
 
     response = client.get(f"/api/v1/sponsors/{sponsor.id}", headers=auth_headers(finance_token))

@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 # Force test environment before any app imports
 os.environ.setdefault("ENVIRONMENT", "development")
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test_genesis.db")
+if not os.environ.get("DATABASE_URL"):
+    os.environ["DATABASE_URL"] = "sqlite:///./test_genesis.db"
 os.environ.setdefault(
     "JWT_SECRET_KEY", "test-only-jwt-secret-key-at-least-32-chars-long"
 )
@@ -60,7 +61,10 @@ def engine():
     # Enum columns to use String so they work correctly.
     Base.metadata.create_all(bind=eng)
     yield eng
-    Base.metadata.drop_all(bind=eng)
+    with eng.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys=OFF"))
+        Base.metadata.drop_all(bind=conn)
+        conn.execute(text("PRAGMA foreign_keys=ON"))
 
 
 @pytest.fixture(scope="function")

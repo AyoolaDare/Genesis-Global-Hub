@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    JSON,
     Numeric,
     String,
     Text,
@@ -157,7 +158,10 @@ class SponsorPayment(Base):
     thank_you_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    flutterwave_response: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    flutterwave_response: Mapped[Optional[dict]] = mapped_column(
+        JSONB().with_variant(JSON, "sqlite"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

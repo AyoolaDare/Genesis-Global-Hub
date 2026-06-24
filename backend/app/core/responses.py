@@ -83,6 +83,9 @@ def paginated_response(
     return {
         "success": True,
         "data": data,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
         "meta": {
             "page": page,
             "per_page": per_page,

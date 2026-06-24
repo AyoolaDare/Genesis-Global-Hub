@@ -261,29 +261,43 @@ class ScopeFilter:
             # No scope at all — return empty result set
             return query.filter(False)
 
-        # Import here to avoid circular imports
-        from sqlalchemy import text as sa_text
+        from sqlalchemy import and_, exists, or_
+        from app.models.structure import MemberAssignment
 
-        # Build a subquery using the member_assignments join table
         conditions = []
         if dept_ids:
             conditions.append(
-                f"(ma.assignment_type = 'DEPARTMENT' AND ma.assignment_id = ANY(ARRAY[{','.join(repr(str(i)) for i in dept_ids)}]::uuid[]))"
+                and_(
+                    MemberAssignment.assignment_type == "DEPARTMENT",
+                    MemberAssignment.assignment_id.in_(
+                        [uuid.UUID(str(entity_id)) for entity_id in dept_ids]
+                    ),
+                )
             )
         if team_ids:
             conditions.append(
-                f"(ma.assignment_type = 'TEAM' AND ma.assignment_id = ANY(ARRAY[{','.join(repr(str(i)) for i in team_ids)}]::uuid[]))"
+                and_(
+                    MemberAssignment.assignment_type == "TEAM",
+                    MemberAssignment.assignment_id.in_(
+                        [uuid.UUID(str(entity_id)) for entity_id in team_ids]
+                    ),
+                )
             )
         if group_ids:
             conditions.append(
-                f"(ma.assignment_type = 'GROUP' AND ma.assignment_id = ANY(ARRAY[{','.join(repr(str(i)) for i in group_ids)}]::uuid[]))"
+                and_(
+                    MemberAssignment.assignment_type == "GROUP",
+                    MemberAssignment.assignment_id.in_(
+                        [uuid.UUID(str(entity_id)) for entity_id in group_ids]
+                    ),
+                )
             )
 
-        where_clause = " OR ".join(conditions)
-        subquery = sa_text(
-            f"EXISTS (SELECT 1 FROM member_assignments ma WHERE ma.member_id = members.id AND ({where_clause}))"
+        return query.filter(
+            exists()
+            .where(MemberAssignment.member_id == query.column_descriptions[0]["entity"].id)
+            .where(or_(*conditions))
         )
-        return query.filter(subquery)
 
     @classmethod
     def filter_by_department(

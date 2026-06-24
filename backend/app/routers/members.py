@@ -55,6 +55,11 @@ from app.services.member_service import (
 )
 
 router = APIRouter(prefix="/members", tags=["Members"])
+_MEMBER_REGISTRY_BLOCKED_ROLES = {
+    UserRole.FINANCE_ADMIN,
+    UserRole.HR_ADMIN,
+    UserRole.MEDICAL,
+}
 
 
 # ── List Members ───────────────────────────────────────────────────────────────
@@ -69,9 +74,8 @@ async def list_members_endpoint(
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Medical staff cannot access member records
-    if current_user.role == UserRole.MEDICAL:
-        raise PermissionDenied(message="Medical staff cannot access the member registry.")
+    if current_user.role in _MEMBER_REGISTRY_BLOCKED_ROLES:
+        raise PermissionDenied(message="This role cannot access the member registry.")
 
     members, total = list_members(db, current_user, request, page, per_page, search, status)
     data = [filter_member_fields(m, current_user.role) for m in members]
@@ -132,8 +136,8 @@ async def search_members_endpoint(
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role == UserRole.MEDICAL:
-        raise PermissionDenied(message="Medical staff cannot search member records.")
+    if current_user.role in _MEMBER_REGISTRY_BLOCKED_ROLES:
+        raise PermissionDenied(message="This role cannot search member records.")
 
     members, total = search_members(body.query, db, body.page, body.per_page)
     data = [filter_member_fields(m, current_user.role) for m in members]
@@ -170,8 +174,8 @@ async def get_member_endpoint(
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role == UserRole.MEDICAL:
-        raise PermissionDenied(message="Medical staff cannot access member records.")
+    if current_user.role in _MEMBER_REGISTRY_BLOCKED_ROLES:
+        raise PermissionDenied(message="This role cannot access member records.")
 
     member = get_member(member_id, db)
     return success_response(data=filter_member_fields(member, current_user.role))

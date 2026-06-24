@@ -72,8 +72,9 @@ jobs:
         working-directory: backend
         run: pytest tests/ -v --tb=short --cov=app --cov-report=xml
         env:
-          # Use Supabase test project or a local Postgres for CI
-          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          # Tests use their own in-memory SQLite engine; this prevents an empty
+          # GitHub secret from overriding the test fallback during imports.
+          DATABASE_URL: sqlite:///./test_genesis_ci.db
           SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_KEY }}
           SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
@@ -119,12 +120,12 @@ jobs:
         working-directory: frontend
         run: flutter analyze --no-fatal-infos
 
-      - name: Build Flutter Web (CanvasKit renderer)
+      - name: Build Flutter Web
         working-directory: frontend
         run: |
+          test -f lib/main.dart
           flutter build web \
             --release \
-            --web-renderer canvaskit \
             --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'https://genesis-global-api.onrender.com' }}
 
       - name: Check build output size
