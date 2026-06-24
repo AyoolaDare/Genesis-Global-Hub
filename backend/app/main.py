@@ -29,6 +29,7 @@ from app.routers.medical import router as medical_router
 from app.routers.members import router as members_router
 from app.routers.sponsors import router as sponsors_router
 from app.routers.structure import router as structure_router
+from app.routers.dashboard import router as dashboard_router
 from app.routers.webhooks import router as webhooks_router
 from app.config import settings
 from app.core.exceptions import GenesisException
@@ -110,6 +111,7 @@ def create_app() -> FastAPI:
     app.include_router(structure_router, prefix="/api/v1")
     app.include_router(attendance_router, prefix="/api/v1")
     app.include_router(kpi_router, prefix="/api/v1")
+    app.include_router(dashboard_router, prefix="/api/v1")
     app.include_router(webhooks_router)  # prefix="/api/v1/webhooks" defined in router
 
     # ── Built-in Endpoints ────────────────────────────────────────────────────
