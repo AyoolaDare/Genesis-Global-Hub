@@ -1,7 +1,7 @@
 {
   "version": 2,
   "framework": null,
-  "buildCommand": "flutter pub get && flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL",
+  "buildCommand": "echo 'Using prebuilt static frontend bundle'",
   "outputDirectory": "build/web",
   "routes": [
     {"handle": "filesystem"},
