@@ -19,12 +19,12 @@ import 'features/admin/kpi_config_screen.dart';
 // ---------------------------------------------------------------------------
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
-
   return GoRouter(
     initialLocation: '/login',
     refreshListenable: _AuthStateNotifier(ref),
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
+
       final isLoading = authState.isLoading;
       if (isLoading) return null;
 
