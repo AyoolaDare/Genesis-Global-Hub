@@ -577,7 +577,7 @@ CREATE TABLE IF NOT EXISTS sponsor_payments (
   payment_date        TIMESTAMPTZ,
   payment_method      TEXT CHECK (payment_method IN ('FLUTTERWAVE', 'BANK_TRANSFER', 'CASH')),
   status              payment_status NOT NULL DEFAULT 'PENDING',
-  flutterwave_tx_ref  TEXT UNIQUE,
+  tx_ref              TEXT UNIQUE,
   flutterwave_tx_id   TEXT,
   verified_by         UUID REFERENCES app_users(id) ON DELETE SET NULL,
   verified_at         TIMESTAMPTZ,
