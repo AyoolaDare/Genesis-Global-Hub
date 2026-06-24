@@ -4,7 +4,7 @@ Genesis Global CMS — Attendance Service
 Business logic for meetings and attendance tracking.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func
@@ -97,7 +97,7 @@ def mark_attendance(
     Upsert attendance records for a list of members.
     If a record already exists for (meeting, member), update it.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     results = []
 
     for entry in data.attendances:

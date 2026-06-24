@@ -5,7 +5,7 @@ Provides a simple helper to insert jobs into the notification_queue table.
 Actual sending is done by a separate worker process.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -44,7 +44,7 @@ def queue_notification(
         template_key=template_key,
         payload=payload or {},
         status="PENDING",
-        scheduled_for=scheduled_for or datetime.utcnow(),
+        scheduled_for=scheduled_for or datetime.now(timezone.utc),
     )
     db.add(notification)
     return notification

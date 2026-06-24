@@ -6,7 +6,7 @@ CRITICAL:
   - Only FINANCE_ADMIN/SUPER_ADMIN can access this domain
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func, or_, extract
@@ -123,11 +123,11 @@ def record_payment(
     payment = SponsorPayment(
         sponsor_id=sponsor.id,
         amount=data.amount,
-        payment_date=data.payment_date or datetime.utcnow(),
+        payment_date=data.payment_date or datetime.now(timezone.utc),
         payment_method=data.payment_method,
         status=PaymentStatusEnum.COMPLETED,
         verified_by=current_user.id,
-        verified_at=datetime.utcnow(),
+        verified_at=datetime.now(timezone.utc),
         notes=data.notes,
         next_due_date=data.next_due_date,
     )
@@ -146,7 +146,7 @@ def record_payment(
             payload={
                 "sponsor_name": sponsor.full_name,
                 "amount": float(data.amount),
-                "payment_date": (data.payment_date or datetime.utcnow()).isoformat(),
+                "payment_date": (data.payment_date or datetime.now(timezone.utc)).isoformat(),
             },
         )
 
@@ -186,7 +186,7 @@ def initiate_flutterwave_payment(
     sponsor = get_sponsor(sponsor_id, db)
 
     # Generate a unique transaction reference
-    tx_ref = f"GEN-GLOBAL-{sponsor_id}-{int(datetime.utcnow().timestamp())}"
+    tx_ref = f"GEN-GLOBAL-{sponsor_id}-{int(datetime.now(timezone.utc).timestamp())}"
 
     # Create pending payment record
     payment = SponsorPayment(
@@ -230,9 +230,9 @@ def verify_flutterwave_payment(
     # For now, mark as completed
     if payment.status == PaymentStatusEnum.PENDING:
         payment.status = PaymentStatusEnum.COMPLETED
-        payment.payment_date = datetime.utcnow()
+        payment.payment_date = datetime.now(timezone.utc)
         payment.verified_by = current_user.id
-        payment.verified_at = datetime.utcnow()
+        payment.verified_at = datetime.now(timezone.utc)
         db.flush()
 
         # Queue thank-you
@@ -259,7 +259,7 @@ def verify_flutterwave_payment(
 
 def get_finance_dashboard(db: Session) -> dict:
     """Compute finance dashboard metrics."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 

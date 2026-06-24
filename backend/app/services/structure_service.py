@@ -4,7 +4,7 @@ Genesis Global CMS — Structure Service
 Business logic for departments, teams, groups, and member assignments.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -351,7 +351,7 @@ def assign_member(
         assignment_type=data.assignment_type,
         assignment_id=data.assignment_id,
         role_in_assignment=data.role_in_assignment,
-        joined_at=datetime.utcnow(),
+        joined_at=datetime.now(timezone.utc),
     )
     db.add(assignment)
     db.flush()
@@ -372,6 +372,6 @@ def remove_assignment(
     if not assignment:
         raise NotFound(message=f"Assignment {assignment_id} not found.")
 
-    assignment.left_at = datetime.utcnow()
-    assignment.deleted_at = datetime.utcnow()
+    assignment.left_at = datetime.now(timezone.utc)
+    assignment.deleted_at = datetime.now(timezone.utc)
     db.flush()

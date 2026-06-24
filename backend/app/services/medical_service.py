@@ -9,7 +9,7 @@ CRITICAL SECURITY RULES:
   5. member_link_id is set silently when name+phone matches a member
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func, or_
@@ -240,7 +240,7 @@ def get_dashboard(current_user: AppUser, db: Session) -> dict:
     ).scalar() or 0
 
     # Visits this month
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     visits_this_month = (
         db.query(func.count(MedicalVisit.id))

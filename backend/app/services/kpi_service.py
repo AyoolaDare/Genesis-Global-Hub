@@ -4,7 +4,7 @@ Genesis Global CMS — KPI Service
 Business logic for KPI definitions and records.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -113,7 +113,7 @@ def update_kpi_definition(
 
 
 def delete_kpi_definition(kpi: KpiDefinition, db: Session) -> None:
-    kpi.deleted_at = datetime.utcnow()
+    kpi.deleted_at = datetime.now(timezone.utc)
     db.flush()
 
 

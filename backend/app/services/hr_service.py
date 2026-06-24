@@ -7,7 +7,7 @@ CRITICAL:
   - Only HR_ADMIN/SUPER_ADMIN can access this domain
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func, or_
@@ -249,7 +249,7 @@ def approve_leave_request(
 
     leave.status = data.status
     leave.approved_by = current_user.id
-    leave.approved_at = datetime.utcnow()
+    leave.approved_at = datetime.now(timezone.utc)
 
     if data.status == "APPROVED":
         # Update worker status if on leave
@@ -274,7 +274,7 @@ def award_recognition(
         title=data.title,
         description=data.description,
         awarded_by=current_user.id,
-        awarded_at=data.awarded_at or datetime.utcnow(),
+        awarded_at=data.awarded_at or datetime.now(timezone.utc),
     )
     db.add(recognition)
     db.flush()

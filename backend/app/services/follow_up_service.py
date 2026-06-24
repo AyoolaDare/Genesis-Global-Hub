@@ -5,7 +5,7 @@ Business logic for follow-up contacts, tasks, and notes.
 Includes auto-task creation on contact registration.
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import func, or_
@@ -51,7 +51,7 @@ def create_contact(
             contact_id=contact.id,
             assigned_to=assigned_worker.id,
             stage=FollowUpStageEnum.FIRST_CONTACT,
-            due_date=datetime.utcnow() + timedelta(hours=72),
+            due_date=datetime.now(timezone.utc) + timedelta(hours=72),
         )
         db.add(task)
         db.flush()
@@ -219,7 +219,7 @@ def list_tasks(
 
 def list_tasks_today(db: Session, current_user: AppUser) -> list[dict]:
     """List tasks due today for the current follow-up worker."""
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
 
     rows = (
@@ -255,7 +255,7 @@ def list_tasks_today(db: Session, current_user: AppUser) -> list[dict]:
 
 def list_overdue_tasks(db: Session) -> list[dict]:
     """List tasks past due date that are not completed."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     rows = (
         db.query(FollowUpTask, FollowUpContact)
@@ -320,7 +320,7 @@ def complete_task(
     if current_user.role == UserRole.FOLLOW_UP and task.assigned_to != current_user.id:
         raise PermissionDenied(message="You can only complete tasks assigned to you.")
 
-    task.completed_at = datetime.utcnow()
+    task.completed_at = datetime.now(timezone.utc)
     db.flush()
     return task
 
@@ -332,7 +332,7 @@ def escalate_task(
     db: Session,
 ) -> FollowUpTask:
     """Escalate a task to a supervisor."""
-    task.escalated_at = datetime.utcnow()
+    task.escalated_at = datetime.now(timezone.utc)
     task.escalated_to = data.escalate_to
 
     if data.reason:

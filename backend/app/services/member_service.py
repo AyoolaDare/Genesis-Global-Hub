@@ -5,7 +5,7 @@ Business logic for member creation, approval, rejection, merging,
 deduplication, and role-based field visibility.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import or_
@@ -259,7 +259,7 @@ def update_member(
 
 def soft_delete_member(member: MemberModel, db: Session) -> None:
     """Set deleted_at to now (SUPER_ADMIN only — enforced at router level)."""
-    member.deleted_at = datetime.utcnow()
+    member.deleted_at = datetime.now(timezone.utc)
     db.flush()
 
 
@@ -283,7 +283,7 @@ def approve_member(
 
     member.membership_status = MemberStatusEnum.ACTIVE
     member.approved_by = current_user.id
-    member.approved_at = datetime.utcnow()
+    member.approved_at = datetime.now(timezone.utc)
 
     # Update pending data
     if member.pending_data:
@@ -295,7 +295,7 @@ def approve_member(
         MemberDuplicate.new_member_id == member.id,
         MemberDuplicate.status == "PENDING",
     ).update(
-        {"status": "RESOLVED", "resolved_by": current_user.id, "resolved_at": datetime.utcnow()},
+        {"status": "RESOLVED", "resolved_by": current_user.id, "resolved_at": datetime.now(timezone.utc)},
         synchronize_session=False,
     )
 
@@ -392,7 +392,7 @@ def merge_member(
         ),
         MemberDuplicate.status == "PENDING",
     ).update(
-        {"status": "RESOLVED", "resolved_by": current_user.id, "resolved_at": datetime.utcnow()},
+        {"status": "RESOLVED", "resolved_by": current_user.id, "resolved_at": datetime.now(timezone.utc)},
         synchronize_session=False,
     )
 

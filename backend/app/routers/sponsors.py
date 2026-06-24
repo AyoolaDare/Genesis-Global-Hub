@@ -19,7 +19,7 @@ Endpoints:
   GET    /finance/report/annual          Annual report
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -200,7 +200,7 @@ async def finance_dashboard_endpoint(
 
 @router.get("/finance/report/annual", summary="Annual sponsorship report")
 async def annual_report_endpoint(
-    year: int = Query(datetime.utcnow().year, ge=2020, le=2100),
+    year: int = Query(datetime.now(timezone.utc).year, ge=2020, le=2100),
     current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
     db: Session = Depends(get_db),
 ):
