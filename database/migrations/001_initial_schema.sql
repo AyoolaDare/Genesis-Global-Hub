@@ -202,9 +202,18 @@ CREATE TRIGGER trg_members_updated_at
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- Now add the FK from app_users.member_id to members
-ALTER TABLE app_users
-  ADD CONSTRAINT IF NOT EXISTS fk_app_users_member_id
-  FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'fk_app_users_member_id'
+      AND table_name = 'app_users'
+  ) THEN
+    ALTER TABLE app_users
+      ADD CONSTRAINT fk_app_users_member_id
+      FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- ============================================================
 -- TABLE 3: pending_member_data
