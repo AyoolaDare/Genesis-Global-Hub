@@ -43,8 +43,6 @@ class SendGridClient:
     # ------------------------------------------------------------------
 
     async def send_password_reset(self, to_email: str, reset_link: str) -> bool:
-        from app.config import get_settings
-        settings = get_settings()
         subject = "Reset Your Genesis Global Password"
         html = (
             "<html><body>"

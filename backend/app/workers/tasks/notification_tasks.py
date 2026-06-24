@@ -165,7 +165,6 @@ def send_payment_thank_you(payment_id: str) -> dict:
         Dict with keys: success, payment_id, channel, message.
     """
     from app.integrations.termii import termii
-    from app.integrations.sendgrid import sendgrid_client
     from app.models.sponsor import SponsorPayment, Sponsor
 
     result = {"success": False, "payment_id": payment_id, "channel": None, "message": ""}
