@@ -179,7 +179,7 @@ class _AuditLogsScreenState extends ConsumerState<AuditLogsScreen> {
           SizedBox(
             width: 200,
             child: DropdownButtonFormField<String>(
-              initialValue: _selectedAction,
+              value: _selectedAction,
               decoration: const InputDecoration(
                 labelText: 'Action Type',
                 border: OutlineInputBorder(),
@@ -284,7 +284,7 @@ class _AuditLogsScreenState extends ConsumerState<AuditLogsScreen> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: WidgetStateProperty.all(AppColors.surface),
+                headingRowColor: MaterialStateProperty.all(AppColors.surface),
                 columnSpacing: 24,
                 columns: const [
                   DataColumn(label: Text('Timestamp')),
@@ -389,9 +389,9 @@ class _ActionBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.12),
+        color: _color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _color.withValues(alpha: 0.3)),
+        border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
         action,

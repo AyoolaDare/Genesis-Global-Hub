@@ -155,7 +155,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
             children: [
               Expanded(
                 child: DropdownButtonFormField<FollowUpStage>(
-                  initialValue: _selectedStage ?? task.stage,
+                  value: _selectedStage ?? task.stage,
                   decoration: const InputDecoration(
                     labelText: 'Update Stage',
                     border: OutlineInputBorder(),
@@ -224,10 +224,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.1),
+                color: AppColors.success.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                    color: AppColors.success.withValues(alpha: 0.3)),
+                    color: AppColors.success.withOpacity(0.3)),
               ),
               child: Row(
                 children: [
