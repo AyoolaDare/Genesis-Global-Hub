@@ -77,6 +77,8 @@ services:
     buildCommand: "cd backend && pip install -r requirements.txt"
     startCommand: "cd backend && celery -A app.workers.celery_app worker --loglevel=info --concurrency=2"
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       - fromGroup: genesis-global-secrets
 
   # ── Celery Beat (Scheduler) ───────────────────────────────────────────────────
@@ -88,6 +90,8 @@ services:
     buildCommand: "cd backend && pip install -r requirements.txt"
     startCommand: "cd backend && celery -A app.workers.celery_app beat --loglevel=info"
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       - fromGroup: genesis-global-secrets
 
 # ── Shared Secret Group ────────────────────────────────────────────────────────
