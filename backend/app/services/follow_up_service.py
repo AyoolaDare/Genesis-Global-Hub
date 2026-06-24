@@ -333,7 +333,7 @@ def escalate_task(
 ) -> FollowUpTask:
     """Escalate a task to a supervisor."""
     task.escalated_at = datetime.now(timezone.utc)
-    task.escalated_to = data.escalate_to
+    task.escalated_to = data.escalate_to_id
 
     if data.reason:
         task.notes = (task.notes or "") + f"\n[ESCALATION]: {data.reason}"
@@ -344,7 +344,7 @@ def escalate_task(
     queue_notification(
         db=db,
         recipient_type="USER",
-        recipient_id=data.escalate_to,
+        recipient_id=data.escalate_to_id,
         channel="IN_APP",
         template_key="TASK_ESCALATED",
         payload={

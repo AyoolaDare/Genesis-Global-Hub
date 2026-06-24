@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.responses import success_response, error_response
 from app.database import get_db
 from app.integrations.flutterwave import flutterwave
-from app.integrations.webhook_handlers import handle_payment_verification
+from app.integrations import webhook_handlers
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ async def verify_payment(
 
     logger.info("Payment verification requested: tx_ref=%s", tx_ref)
 
-    result = await handle_payment_verification(tx_ref=tx_ref, db=db)
+    result = await webhook_handlers.handle_payment_verification(tx_ref=tx_ref, db=db)
 
     status = result.get("status", "unknown")
 
@@ -168,7 +168,7 @@ async def verify_payment(
     elif status == "failed":
         message = "Payment was not successful. Please try again or contact support."
     elif status == "pending":
-        message = "Payment is still processing. Please check back shortly."
+        message = "Payment is pending. Please check back shortly."
     elif status == "not_found":
         message = "Transaction not found. Please ensure the reference is correct."
     elif status == "error":

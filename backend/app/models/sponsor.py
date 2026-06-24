@@ -135,7 +135,7 @@ class SponsorPayment(Base):
         Enum(PaymentMethodEnum, name="payment_method", create_type=False),
         nullable=True,
     )
-    flutterwave_tx_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
+    tx_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
     flutterwave_tx_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     amount: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False)
     status: Mapped[PaymentStatusEnum] = mapped_column(

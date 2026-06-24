@@ -50,9 +50,9 @@ def normalize_phone(phone: Optional[str]) -> Optional[str]:
     if not digits:
         return None
 
-    # If starts with 234 (country code), take remaining digits
+    # If starts with 234 (country code), strip it and restore the leading 0
     if digits.startswith("234") and len(digits) > 11:
-        digits = digits[3:]
+        digits = "0" + digits[3:]
 
     # Take the last 11 digits (handles any leading zeros or country code)
     if len(digits) >= 10:
@@ -107,8 +107,8 @@ def calculate_name_similarity(name1: str, name2: str) -> float:
     # SequenceMatcher on the sorted token strings
     seq_ratio = SequenceMatcher(None, sorted1, sorted2).ratio() * 100.0
 
-    # Weighted average
-    return jaccard * 0.60 + seq_ratio * 0.40
+    # Weighted average: sequence matcher handles typos much better than Jaccard
+    return jaccard * 0.20 + seq_ratio * 0.80
 
 
 # ── Email Similarity ───────────────────────────────────────────────────────────
@@ -169,7 +169,8 @@ def calculate_duplicate_score(
     phone_score = 100.0 if phone_match else 0.0
 
     if phone_match:
-        overall_score = 0.60 * 100.0 + 0.40 * name_score
+        # Phone match alone must clear the duplicate threshold; name is a minor modifier
+        overall_score = 0.80 * 100.0 + 0.20 * name_score
     else:
         overall_score = 0.70 * name_score + 0.30 * email_score
 

@@ -20,7 +20,7 @@ from app.schemas.member import (
     MemberUpdate,
 )
 from app.services.dedup_service import normalize_phone, run_dedup_check
-from app.services.notification_service import queue_notification
+from app.services.notification_service import NotificationService, queue_notification
 
 
 # ── Role → Status Mapping ──────────────────────────────────────────────────────
@@ -181,8 +181,13 @@ async def create_member(
         )
         db.add(pending)
 
-    # Save duplicate records
+    # Save duplicate records — only when the referenced member actually exists
     for dup in dup_results:
+        referenced = db.query(MemberModel).filter(
+            MemberModel.id == dup.existing_member_id
+        ).first()
+        if not referenced:
+            continue
         dup_record = MemberDuplicate(
             new_member_id=member.id,
             existing_member_id=dup.existing_member_id,
@@ -301,16 +306,16 @@ def approve_member(
 
     db.flush()
 
-    # Queue welcome SMS to member (if phone exists)
+    # Send welcome SMS to member (if phone exists) — failure must never block approval
     if member.phone:
-        queue_notification(
-            db=db,
-            recipient_type="MEMBER",
-            recipient_id=member.id,
-            channel="SMS",
-            template_key="MEMBER_WELCOME",
-            payload={"name": member.full_name},
-        )
+        try:
+            notif = NotificationService()
+            notif.queue_sms(
+                member.phone,
+                f"Welcome to Genesis Global! {member.full_name}, we're glad you're part of our family.",
+            )
+        except Exception:
+            pass
 
     return member
 

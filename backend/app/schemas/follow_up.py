@@ -55,7 +55,7 @@ class FollowUpTaskUpdate(BaseSchema):
 
 
 class EscalateTaskRequest(BaseSchema):
-    escalate_to: uuid.UUID
+    escalate_to_id: uuid.UUID
     reason: Optional[str] = None
 
 

@@ -13,6 +13,39 @@ from sqlalchemy.orm import Session
 from app.models.notification import NotificationQueue
 
 
+class NotificationService:
+    """Facade for sending SMS and email notifications."""
+
+    def __init__(self) -> None:
+        try:
+            from app.integrations.termii import TermiiClient
+            self._termii = TermiiClient()
+        except Exception:
+            self._termii = None
+
+        try:
+            from app.integrations.sendgrid import SendGridClient
+            self._sendgrid = SendGridClient()
+        except Exception:
+            self._sendgrid = None
+
+    def queue_sms(self, phone: Optional[str], message: str) -> None:
+        if not phone or not self._termii:
+            return
+        try:
+            self._termii.send_sms(phone, message)
+        except Exception:
+            pass
+
+    def queue_email(self, to_email: str, subject: str, body: str) -> None:
+        if not self._sendgrid:
+            return
+        try:
+            self._sendgrid.send_email(to_email=to_email, subject=subject, body=body)
+        except Exception:
+            pass
+
+
 def queue_notification(
     db: Session,
     recipient_type: str,

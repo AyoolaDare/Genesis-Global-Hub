@@ -205,7 +205,7 @@ def get_kpi_dashboard(
         # Percentage achieved
         percent_achieved = None
         if kpi.target_value and current_value is not None and kpi.target_value > 0:
-            percent_achieved = round((current_value / kpi.target_value) * 100.0, 1)
+            percent_achieved = round(float(current_value) / float(kpi.target_value) * 100.0, 1)
 
         trend = [
             {

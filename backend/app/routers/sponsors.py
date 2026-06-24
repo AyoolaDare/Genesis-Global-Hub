@@ -74,7 +74,7 @@ def _serialize_payment(payment) -> dict:
         "payment_date": payment.payment_date,
         "payment_method": payment.payment_method,
         "status": payment.status,
-        "flutterwave_tx_ref": payment.flutterwave_tx_ref,
+        "tx_ref": payment.tx_ref,
         "verified_by": payment.verified_by,
         "verified_at": payment.verified_at,
         "notes": payment.notes,

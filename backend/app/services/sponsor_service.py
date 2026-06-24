@@ -194,7 +194,7 @@ def initiate_flutterwave_payment(
         amount=amount,
         payment_method="FLUTTERWAVE",
         status=PaymentStatusEnum.PENDING,
-        flutterwave_tx_ref=tx_ref,
+        tx_ref=tx_ref,
     )
     db.add(payment)
     db.flush()
@@ -220,7 +220,7 @@ def verify_flutterwave_payment(
     In production, this would call the Flutterwave verification API.
     """
     payment = db.query(SponsorPayment).filter(
-        SponsorPayment.flutterwave_tx_ref == tx_ref,
+        SponsorPayment.tx_ref == tx_ref,
         SponsorPayment.deleted_at.is_(None),
     ).first()
     if not payment:

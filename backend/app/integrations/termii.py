@@ -111,6 +111,13 @@ class TermiiClient:
             )
         return normalized
 
+    async def _post(self, endpoint: str, payload: dict) -> dict:
+        """Internal helper that POSTs JSON to a Termii endpoint and returns parsed JSON."""
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            response = await http.post(f"{self.BASE_URL}{endpoint}", json=payload)
+            response.raise_for_status()
+            return response.json()
+
     async def send_sms(
         self,
         to: str,
@@ -144,20 +151,14 @@ class TermiiClient:
             "api_key": settings.TERMII_API_KEY,
         }
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.BASE_URL}/sms/send",
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
-                logger.info(
-                    "Termii SMS sent: to=%s channel=%s message_id=%s",
-                    normalized_to,
-                    channel,
-                    data.get("message_id"),
-                )
-                return data
+            data = await self._post("/sms/send", payload)
+            logger.info(
+                "Termii SMS sent: to=%s channel=%s message_id=%s",
+                normalized_to,
+                channel,
+                data.get("message_id"),
+            )
+            return data
         except httpx.HTTPStatusError as exc:
             logger.error(
                 "Termii send_sms HTTP error: to=%s status=%s body=%s",
