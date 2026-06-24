@@ -1,8 +1,8 @@
 {
   "version": 2,
   "framework": null,
-  "buildCommand": "echo 'Using prebuilt static frontend bundle'",
-  "outputDirectory": "web",
+  "buildCommand": "git clone --depth 1 --branch 3.19.0 https://github.com/flutter/flutter.git $HOME/flutter && export PATH=\"$PATH:$HOME/flutter/bin\" && flutter precache --web && cd frontend && flutter pub get && flutter build web --release --dart-define=API_BASE_URL=https://genesis-global-api.onrender.com",
+  "outputDirectory": "frontend/build/web",
   "routes": [
     {"handle": "filesystem"},
     {"src": "/(.*)", "dest": "/index.html"}
