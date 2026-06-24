@@ -22,26 +22,36 @@ class NotificationService:
             self._termii = TermiiClient()
         except Exception:
             self._termii = None
+        self._brevo = None
 
         try:
-            from app.integrations.sendgrid import SendGridClient
-            self._sendgrid = SendGridClient()
+            from app.integrations.brevo import BrevoClient
+            self._brevo = BrevoClient()
         except Exception:
-            self._sendgrid = None
+            self._brevo = None
 
     def queue_sms(self, phone: Optional[str], message: str) -> None:
         if not phone or not self._termii:
             return
         try:
-            self._termii.send_sms(phone, message)
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self._termii.send_sms(phone, message))
+            else:
+                loop.run_until_complete(self._termii.send_sms(phone, message))
         except Exception:
             pass
 
     def queue_email(self, to_email: str, subject: str, body: str) -> None:
-        if not self._sendgrid:
+        if not self._brevo:
             return
         try:
-            self._sendgrid.send_email(to_email=to_email, subject=subject, body=body)
+            self._brevo.send_email(
+                to_email=to_email,
+                subject=subject,
+                html_content=body,
+            )
         except Exception:
             pass
 

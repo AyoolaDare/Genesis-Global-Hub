@@ -32,8 +32,8 @@ redis==5.2.1                      # Redis client with TLS support (Upstash-compa
 celery==5.4.0                     # Background task processing
 celery[redis]==5.4.0              # Redis broker for Celery
 
-# ── Email ─────────────────────────────────────────────────────────────────────
-sendgrid==6.11.0                  # SendGrid Python SDK
+# ── Email (Brevo — uses httpx, no extra SDK needed) ───────────────────────────
+# Brevo REST API called directly via httpx (already listed above)
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 email-validator==2.2.0            # EmailStr validation for Pydantic

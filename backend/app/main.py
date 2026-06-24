@@ -124,6 +124,85 @@ def create_app() -> FastAPI:
             "database": "ok" if db_ok else "error",
         }
 
+    @app.get("/health/integrations", tags=["System"], summary="Integration connectivity check")
+    async def integrations_health():
+        """
+        Check connectivity to all external integrations.
+        Safe to call in production — never exposes secrets, only status.
+        """
+        import time
+        import httpx as _httpx
+        from app.config import settings as s
+
+        results: dict = {}
+
+        # ── Database ─────────────────────────────────────────────────────────
+        results["database"] = "ok" if check_db_connection() else "error"
+
+        # ── Redis (Upstash) ───────────────────────────────────────────────────
+        try:
+            import redis as _redis
+            r = _redis.from_url(s.UPSTASH_REDIS_URL, socket_connect_timeout=3)
+            r.ping()
+            results["redis"] = "ok"
+        except Exception as exc:
+            results["redis"] = f"error: {type(exc).__name__}"
+
+        # ── Supabase Auth ─────────────────────────────────────────────────────
+        try:
+            async with _httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(
+                    f"{s.SUPABASE_URL}/auth/v1/health",
+                    headers={"apikey": s.SUPABASE_ANON_KEY},
+                )
+            results["supabase_auth"] = "ok" if resp.status_code < 400 else f"error: {resp.status_code}"
+        except Exception as exc:
+            results["supabase_auth"] = f"error: {type(exc).__name__}"
+
+        # ── Flutterwave ───────────────────────────────────────────────────────
+        try:
+            if s.FLUTTERWAVE_SECRET_KEY:
+                async with _httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(
+                        "https://api.flutterwave.com/v3/banks/NG",
+                        headers={"Authorization": f"Bearer {s.FLUTTERWAVE_SECRET_KEY}"},
+                    )
+                results["flutterwave"] = "ok" if resp.status_code == 200 else f"error: {resp.status_code}"
+            else:
+                results["flutterwave"] = "not_configured"
+        except Exception as exc:
+            results["flutterwave"] = f"error: {type(exc).__name__}"
+
+        # ── Termii (SMS) ──────────────────────────────────────────────────────
+        try:
+            if s.TERMII_API_KEY:
+                async with _httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(
+                        f"https://api.ng.termii.com/api/get-balance?api_key={s.TERMII_API_KEY}",
+                    )
+                results["termii"] = "ok" if resp.status_code == 200 else f"error: {resp.status_code}"
+            else:
+                results["termii"] = "not_configured"
+        except Exception as exc:
+            results["termii"] = f"error: {type(exc).__name__}"
+
+        # ── Brevo (Email) ─────────────────────────────────────────────────────
+        try:
+            if s.BREVO_API_KEY:
+                async with _httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.get(
+                        "https://api.brevo.com/v3/account",
+                        headers={"api-key": s.BREVO_API_KEY, "accept": "application/json"},
+                    )
+                results["brevo"] = "ok" if resp.status_code == 200 else f"error: {resp.status_code}"
+            else:
+                results["brevo"] = "not_configured"
+        except Exception as exc:
+            results["brevo"] = f"error: {type(exc).__name__}"
+
+        overall = "ok" if all(v == "ok" or v == "not_configured" for v in results.values()) else "degraded"
+        return {"status": overall, "checks": results, "timestamp": int(time.time())}
+
     return app
 
 

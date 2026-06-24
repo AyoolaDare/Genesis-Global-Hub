@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     TERMII_API_KEY: str = ""
     TERMII_SENDER_ID: str = "GenesisGL"
 
-    # ── SendGrid ──────────────────────────────────────────────────────────────
-    SENDGRID_API_KEY: str = ""
+    # ── Brevo (transactional email) ───────────────────────────────────────────
+    BREVO_API_KEY: str = ""
     FROM_EMAIL: str = "noreply@genesisglob.al"
 
     # ── CORS ──────────────────────────────────────────────────────────────────

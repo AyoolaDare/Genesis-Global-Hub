@@ -50,10 +50,18 @@ def configure_cors(app: FastAPI) -> None:
 
     logger.info("CORS configured for origins: %s", allowed_origins)
 
+    # Allow all Vercel preview deployments + any custom domains in ALLOWED_ORIGINS.
+    # CORSMiddleware supports allow_origin_regex for pattern matching.
+    allow_origin_regex = (
+        r"https://.*\.vercel\.app"
+        r"|https://.*\.onrender\.com"
+    )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
-        allow_credentials=True,   # Required for cookies/auth headers
+        allow_origin_regex=allow_origin_regex,
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=[
             "Authorization",
@@ -69,5 +77,5 @@ def configure_cors(app: FastAPI) -> None:
             "X-RateLimit-Remaining",
             "X-RateLimit-Reset",
         ],
-        max_age=600,  # Preflight cache: 10 minutes
+        max_age=600,
     )
