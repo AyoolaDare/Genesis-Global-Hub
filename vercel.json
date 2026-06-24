@@ -2,7 +2,7 @@
   "version": 2,
   "framework": null,
   "buildCommand": "echo 'Using prebuilt static frontend bundle'",
-  "outputDirectory": "frontend/build/web",
+  "outputDirectory": "build/web",
   "routes": [
     {"handle": "filesystem"},
     {"src": "/(.*)", "dest": "/index.html"}
