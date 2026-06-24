@@ -74,7 +74,8 @@ class Group {
   final String id;
   final String name;
   final String? description;
-  final String teamId;
+  final String? teamId;
+  final String? departmentId;
   final String? leaderId;
   final String? leaderName;
   final int memberCount;
@@ -83,7 +84,8 @@ class Group {
     required this.id,
     required this.name,
     this.description,
-    required this.teamId,
+    this.teamId,
+    this.departmentId,
     this.leaderId,
     this.leaderName,
     this.memberCount = 0,
@@ -94,8 +96,9 @@ class Group {
       id: json['id'] ?? '',
       name: json['name'] ?? '',
       description: json['description'],
-      teamId: json['team_id'] ?? '',
-      leaderId: json['leader_id'],
+      teamId: json['team_id']?.toString(),
+      departmentId: json['department_id']?.toString(),
+      leaderId: json['leader_id']?.toString(),
       leaderName: json['leader_name'],
       memberCount: json['member_count'] ?? 0,
     );

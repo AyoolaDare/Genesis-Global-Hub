@@ -281,6 +281,14 @@ class MembersNotifier extends AsyncNotifier<MembersList> {
     return true;
   }
 
+  /// Creates a member and returns the new member's ID, or null on failure.
+  Future<String?> createMemberAndGetId(MemberCreate data) async {
+    final dio = ref.read(dioProvider);
+    final response = await dio.post(ApiEndpoints.members, data: data.toJson());
+    await refresh();
+    return response.data['data']?['id']?.toString();
+  }
+
   Future<bool> approveMember(String memberId) async {
     final dio = ref.read(dioProvider);
     await dio.post(ApiEndpoints.memberApprove(memberId));

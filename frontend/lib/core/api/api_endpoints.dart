@@ -22,6 +22,7 @@ class ApiEndpoints {
   static String memberMerge(String id) => '/members/$id/merge';
   static const String pendingMembers = '/members/pending';
   static String memberPhoto(String id) => '/members/$id/photo';
+  static String memberAssign(String id) => '/members/$id/assign';
 
   // Departments
   static const String departments = '/departments';
