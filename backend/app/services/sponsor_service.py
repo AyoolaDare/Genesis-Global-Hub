@@ -14,11 +14,14 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser
 from app.core.exceptions import NotFound
+from app.integrations.flutterwave import FlutterwaveClient
 from app.models.sponsor import PaymentStatusEnum, Sponsor, SponsorPayment
 from app.models.member import MemberModel
 from app.schemas.sponsor import SponsorCreate, SponsorPaymentCreate, SponsorUpdate
 from app.services.dedup_service import normalize_phone
 from app.services.notification_service import queue_notification
+
+flutterwave = FlutterwaveClient()
 
 
 # ── Sponsor Service ────────────────────────────────────────────────────────────

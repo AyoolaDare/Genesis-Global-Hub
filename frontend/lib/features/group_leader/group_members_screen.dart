@@ -214,7 +214,7 @@ class _MemberTile extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 24,
-              backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+              backgroundColor: AppColors.primary.withOpacity(0.15),
               backgroundImage: member.photoUrl != null
                   ? NetworkImage(member.photoUrl!)
                   : null,
@@ -304,9 +304,9 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.12),
+        color: _color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _color.withValues(alpha: 0.3)),
+        border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
         status.value,

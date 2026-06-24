@@ -171,7 +171,7 @@ class _SummaryCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: item.color.withValues(alpha: 0.12),
+              color: item.color.withOpacity(0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(item.icon, size: 24, color: item.color),
@@ -328,9 +328,9 @@ class _MetricChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

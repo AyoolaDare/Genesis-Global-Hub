@@ -5,6 +5,8 @@ import 'app_colors.dart';
 class AppTheme {
   AppTheme._();
 
+  static final ThemeData _baseTheme = ThemeData.light(useMaterial3: true);
+
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
@@ -33,7 +35,7 @@ class AppTheme {
           color: AppColors.white,
         ),
       ),
-      cardTheme: CardThemeData(
+      cardTheme: _baseTheme.cardTheme.copyWith(
         color: AppColors.cardBg,
         elevation: 2,
         shadowColor: AppColors.cardShadow,
@@ -146,7 +148,7 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         behavior: SnackBarBehavior.floating,
       ),
-      dialogTheme: DialogThemeData(
+      dialogTheme: _baseTheme.dialogTheme.copyWith(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         titleTextStyle: GoogleFonts.poppins(
           fontSize: 18,
@@ -158,7 +160,7 @@ class AppTheme {
           color: AppColors.textSecondary,
         ),
       ),
-      tabBarTheme: TabBarThemeData(
+      tabBarTheme: _baseTheme.tabBarTheme.copyWith(
         labelColor: AppColors.primary,
         unselectedLabelColor: AppColors.textSecondary,
         indicatorColor: AppColors.secondary,

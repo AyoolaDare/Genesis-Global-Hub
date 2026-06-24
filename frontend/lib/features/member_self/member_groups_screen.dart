@@ -200,7 +200,7 @@ class _SectionHeader extends StatelessWidget {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
+            color: color.withOpacity(0.12),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, size: 18, color: color),
@@ -217,7 +217,7 @@ class _SectionHeader extends StatelessWidget {
           padding:
               const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
+            color: color.withOpacity(0.12),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
@@ -350,11 +350,11 @@ class _RoleBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: (isLeader ? AppColors.secondary : color)
-            .withValues(alpha: 0.12),
+            .withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
           color: (isLeader ? AppColors.secondary : color)
-              .withValues(alpha: 0.3),
+              .withOpacity(0.3),
         ),
       ),
       child: Text(

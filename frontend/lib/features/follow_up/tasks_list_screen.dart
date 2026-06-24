@@ -194,11 +194,11 @@ class _TaskCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: task.isOverdue
-              ? AppColors.error.withValues(alpha: 0.04)
+              ? AppColors.error.withOpacity(0.04)
               : AppColors.white,
           borderRadius: BorderRadius.circular(12),
           border: task.isOverdue
-              ? Border.all(color: AppColors.error.withValues(alpha: 0.25))
+              ? Border.all(color: AppColors.error.withOpacity(0.25))
               : null,
           boxShadow: const [
             BoxShadow(
@@ -272,7 +272,7 @@ class _TaskCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: AppColors.error.withValues(alpha: 0.12),
+                            color: AppColors.error.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
@@ -359,9 +359,9 @@ class _StageChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.12),
+        color: _color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _color.withValues(alpha: 0.3)),
+        border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
         stage.label,

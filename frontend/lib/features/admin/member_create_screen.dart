@@ -181,7 +181,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              initialValue: _gender,
+                              value: _gender,
                               decoration:
                                   const InputDecoration(labelText: 'Gender'),
                               items: ['Male', 'Female']
@@ -242,7 +242,7 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                           const SizedBox(width: 16),
                           Expanded(
                             child: DropdownButtonFormField<String>(
-                              initialValue: _maritalStatus,
+                              value: _maritalStatus,
                               decoration: const InputDecoration(
                                   labelText: 'Marital Status'),
                               items: [
@@ -345,9 +345,9 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.error.withValues(alpha: 0.1),
+        color: AppColors.error.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+        border: Border.all(color: AppColors.error.withOpacity(0.3)),
       ),
       child: Row(
         children: [

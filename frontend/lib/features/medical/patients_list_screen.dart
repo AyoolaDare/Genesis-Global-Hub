@@ -204,7 +204,7 @@ class _PatientCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.12),
+                    color: AppColors.primary.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(Icons.person_outline,
@@ -241,12 +241,12 @@ class _PatientCard extends StatelessWidget {
                       horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: patient.isChurchMember
-                        ? AppColors.success.withValues(alpha: 0.1)
+                        ? AppColors.success.withOpacity(0.1)
                         : AppColors.surfaceVariant,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
                       color: patient.isChurchMember
-                          ? AppColors.success.withValues(alpha: 0.3)
+                          ? AppColors.success.withOpacity(0.3)
                           : AppColors.border,
                     ),
                   ),

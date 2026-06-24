@@ -62,7 +62,7 @@ class _KpiConfigCard extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: AppColors.secondary.withValues(alpha: 0.15),
+            color: AppColors.secondary.withOpacity(0.15),
             borderRadius: BorderRadius.circular(10),
           ),
           child: const Icon(Icons.track_changes,
@@ -93,8 +93,8 @@ class _KpiConfigCard extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: config.isActive
-                    ? AppColors.success.withValues(alpha: 0.1)
-                    : AppColors.statusInactive.withValues(alpha: 0.1),
+                    ? AppColors.success.withOpacity(0.1)
+                    : AppColors.statusInactive.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(

@@ -1,8 +1,8 @@
 {
   "version": 2,
   "framework": null,
-  "buildCommand": "cd frontend && flutter pub get && flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL",
-  "outputDirectory": "frontend/build/web",
+  "buildCommand": "flutter pub get && flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL",
+  "outputDirectory": "build/web",
   "routes": [
     {"handle": "filesystem"},
     {"src": "/(.*)", "dest": "/index.html"}
@@ -32,7 +32,6 @@
     }
   ],
   "env": {
-    "FLUTTER_WEB_CANVASKIT_URL": "https://www.gstatic.com/flutter-canvaskit/",
     "FLUTTER_BUILD_TARGET": "web"
   }
 }

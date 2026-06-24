@@ -18,8 +18,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
-# Force test environment before any app imports
-os.environ.setdefault("ENVIRONMENT", "development")
+# Force test environment before any app imports.
+os.environ["ENVIRONMENT"] = "test"
 if not os.environ.get("DATABASE_URL"):
     os.environ["DATABASE_URL"] = "sqlite:///./test_genesis.db"
 os.environ.setdefault(
@@ -101,12 +101,18 @@ def client(db: Session):
     # and rate limit checks always succeed.
     redis_mock = MagicMock()
     redis_mock.exists.return_value = 0  # token not blacklisted
-    redis_mock.incr.return_value = 1    # first attempt (within rate limit)
-    redis_mock.pipeline.return_value.__enter__ = MagicMock(return_value=redis_mock)
-    redis_mock.pipeline.return_value.__exit__ = MagicMock(return_value=False)
-    redis_mock.pipeline.return_value.execute.return_value = [1, True]
-    redis_mock.pipeline.return_value.incr = MagicMock()
-    redis_mock.pipeline.return_value.expire = MagicMock()
+    redis_mock.get.return_value = None
+    redis_mock.incr.return_value = 1  # first attempt (within rate limit)
+    redis_mock.expire.return_value = True
+    redis_mock.setex.return_value = True
+
+    pipeline_mock = MagicMock()
+    pipeline_mock.__enter__.return_value = pipeline_mock
+    pipeline_mock.__exit__.return_value = False
+    pipeline_mock.incr.return_value = 1
+    pipeline_mock.expire.return_value = True
+    pipeline_mock.execute.return_value = [1, True]
+    redis_mock.pipeline.return_value = pipeline_mock
 
     with patch("app.core.security._get_redis_client", return_value=redis_mock), \
          patch("app.workers.tasks.payment_tasks.process_webhook_payment") as mock_celery:

@@ -120,7 +120,7 @@ class _SponsorInfoCard extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: AppColors.secondary.withValues(alpha: 0.15),
+                  color: AppColors.secondary.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.volunteer_activism_outlined,
@@ -238,9 +238,9 @@ class _TierBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.12),
+        color: _color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _color.withValues(alpha: 0.3)),
+        border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
         tier.replaceAll('_', ' '),
@@ -324,7 +324,7 @@ class _PaymentHistoryCard extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               child: DataTable(
                 headingRowColor:
-                    WidgetStateProperty.all(AppColors.surface),
+                    MaterialStateProperty.all(AppColors.surface),
                 columns: const [
                   DataColumn(label: Text('Date')),
                   DataColumn(label: Text('Amount')),

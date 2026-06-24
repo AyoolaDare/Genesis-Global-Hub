@@ -73,10 +73,10 @@ class _NewConvertScreenState extends ConsumerState<NewConvertScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.06),
+              color: AppColors.primary.withOpacity(0.06),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.15)),
+                  color: AppColors.primary.withOpacity(0.15)),
             ),
             child: Row(
               children: [
@@ -272,7 +272,7 @@ class _NewConvertScreenState extends ConsumerState<NewConvertScreen> {
                 width: 96,
                 height: 96,
                 decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.12),
+                  color: AppColors.success.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.check_circle_outline,

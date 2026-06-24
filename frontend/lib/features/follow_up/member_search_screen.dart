@@ -264,7 +264,7 @@ class _MemberSearchCard extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+            backgroundColor: AppColors.primary.withOpacity(0.15),
             child: Text(
               result.fullName.isNotEmpty
                   ? result.fullName[0].toUpperCase()
@@ -310,10 +310,10 @@ class _MemberSearchCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: _statusColor.withValues(alpha: 0.12),
+              color: _statusColor.withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                  color: _statusColor.withValues(alpha: 0.3)),
+                  color: _statusColor.withOpacity(0.3)),
             ),
             child: Text(
               result.status,

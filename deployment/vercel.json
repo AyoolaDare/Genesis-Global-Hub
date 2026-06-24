@@ -1,7 +1,7 @@
 {
   "version": 2,
   "framework": null,
-  "buildCommand": "cd frontend && flutter pub get && flutter build web --release --web-renderer canvaskit --dart-define=API_BASE_URL=$API_BASE_URL",
+  "buildCommand": "cd frontend && flutter pub get && flutter build web --release --dart-define=API_BASE_URL=$API_BASE_URL",
   "outputDirectory": "frontend/build/web",
   "routes": [
     {"handle": "filesystem"},

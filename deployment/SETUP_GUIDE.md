@@ -426,7 +426,7 @@ npm install -g vercel
 4. Configuration:
    - **Framework Preset**: Other
    - **Root Directory**: leave blank (Vercel reads vercel.json from repo root)
-   - **Build Command**: `cd frontend && flutter pub get && flutter build web --release --web-renderer canvaskit`
+   - **Build Command**: `cd frontend && flutter pub get && flutter build web --release`
    - **Output Directory**: `frontend/build/web`
    - **Install Command**: leave blank (not needed for Flutter)
 
@@ -439,7 +439,7 @@ Update `deployment/vercel.json` build command to install Flutter first:
 The current vercel.json is configured for Vercel environments that support Flutter. If your build fails because Flutter is not found, use a Vercel Build Plugin or replace the build command with:
 
 ```bash
-curl -fsSL https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.19.0-stable.tar.xz | tar -xJ -C $HOME && export PATH="$PATH:$HOME/flutter/bin" && cd frontend && flutter pub get && flutter build web --release --web-renderer canvaskit
+curl -fsSL https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.19.0-stable.tar.xz | tar -xJ -C $HOME && export PATH="$PATH:$HOME/flutter/bin" && cd frontend && flutter pub get && flutter build web --release
 ```
 
 Add this as the Build Command in Vercel project settings (override the vercel.json value).

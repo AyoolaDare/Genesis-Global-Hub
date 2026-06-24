@@ -247,7 +247,7 @@ class _CreateReviewTabState
                                 horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               color: _scoreColor(_avgScore)
-                                  .withValues(alpha: 0.12),
+                                  .withOpacity(0.12),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -475,7 +475,7 @@ class _ScoreSlider extends StatelessWidget {
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: _color,
               thumbColor: _color,
-              overlayColor: _color.withValues(alpha: 0.12),
+              overlayColor: _color.withOpacity(0.12),
               inactiveTrackColor: AppColors.border,
             ),
             child: Slider(
@@ -578,7 +578,7 @@ class _PastReviewCard extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: _scoreColor.withValues(alpha: 0.12),
+              color: _scoreColor.withOpacity(0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Center(

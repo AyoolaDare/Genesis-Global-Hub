@@ -1,0 +1,96 @@
+services:
+  # ── Web API (FastAPI) ──────────────────────────────────────────────────────────
+  - type: web
+    name: genesis-global-api
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+      # ── Database (Supabase) — set manually in Render Dashboard ─────────────────
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+
+      # ── JWT — auto-generated on first deploy ───────────────────────────────────
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: "HS256"
+      - key: ACCESS_TOKEN_EXPIRE_HOURS
+        value: "24"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "30"
+
+      # ── Redis (Upstash) — set manually ────────────────────────────────────────
+      - key: UPSTASH_REDIS_URL
+        sync: false
+
+      # ── Flutterwave — set manually ─────────────────────────────────────────────
+      - key: FLUTTERWAVE_SECRET_KEY
+        sync: false
+      - key: FLUTTERWAVE_ENCRYPTION_KEY
+        sync: false
+
+      # ── Termii (SMS) — set manually ───────────────────────────────────────────
+      - key: TERMII_API_KEY
+        sync: false
+      - key: TERMII_SENDER_ID
+        value: "GenesisGL"
+
+      # ── SendGrid (Email) — set manually ───────────────────────────────────────
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+
+      # ── CORS — set manually after Vercel URL is known ─────────────────────────
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # ── Rate Limiting ─────────────────────────────────────────────────────────
+      - key: RATE_LIMIT_AUTH_ATTEMPTS
+        value: "5"
+      - key: RATE_LIMIT_AUTH_WINDOW_SECONDS
+        value: "900"
+
+  # ── Celery Worker ─────────────────────────────────────────────────────────────
+  # NOTE: Free tier gives 750 hrs/month shared across all services.
+  # Worker spins down after inactivity. UptimeRobot on /health keeps API alive.
+  - type: worker
+    name: genesis-global-worker
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && celery -A app.workers.celery_app worker --loglevel=info --concurrency=2"
+    envVars:
+      - fromGroup: genesis-global-secrets
+
+  # ── Celery Beat (Scheduler) ───────────────────────────────────────────────────
+  - type: worker
+    name: genesis-global-beat
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && celery -A app.workers.celery_app beat --loglevel=info"
+    envVars:
+      - fromGroup: genesis-global-secrets
+
+# ── Shared Secret Group ────────────────────────────────────────────────────────
+# Create this group in Render Dashboard: Environment > Environment Groups
+# Name it "genesis-global-secrets" and add all envVars listed for the web service.
+# This lets worker and beat services share the same secrets without duplication.

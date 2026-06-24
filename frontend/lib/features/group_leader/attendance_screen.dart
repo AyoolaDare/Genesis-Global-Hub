@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/sidebar.dart';
 import '../../core/widgets/skeleton_loader.dart';
-import '../../core/widgets/error_state.dart';
 import '../../providers/attendance_provider.dart';
 
 // ---------------------------------------------------------------------------
@@ -66,10 +65,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                     margin: const EdgeInsets.all(16),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.error.withValues(alpha: 0.1),
+                      color: AppColors.error.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: AppColors.error.withValues(alpha: 0.3)),
+                          color: AppColors.error.withOpacity(0.3)),
                     ),
                     child: Row(
                       children: [
@@ -255,7 +254,7 @@ class _MeetingListPanel extends StatelessWidget {
                     return ListTile(
                       selected: isSelected,
                       selectedTileColor:
-                          AppColors.primary.withValues(alpha: 0.08),
+                          AppColors.primary.withOpacity(0.08),
                       onTap: () => onSelect(m),
                       title: Text(
                         m.title,
@@ -452,7 +451,7 @@ class _AttendanceRow extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+            backgroundColor: AppColors.primary.withOpacity(0.15),
             backgroundImage: record.photoUrl != null
                 ? NetworkImage(record.photoUrl!)
                 : null,
@@ -520,7 +519,7 @@ class _AttendanceToggle extends StatelessWidget {
       selected: {current},
       onSelectionChanged: (s) => onChanged(s.first),
       style: ButtonStyle(
-        textStyle: WidgetStateProperty.all(
+        textStyle: MaterialStateProperty.all(
           const TextStyle(fontSize: 12),
         ),
       ),
@@ -543,9 +542,9 @@ class _SummaryChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Text(
         label,

@@ -261,7 +261,7 @@ class _ProfileHeader extends StatelessWidget {
                   width: 72,
                   height: 72,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.12),
+                    color: AppColors.primary.withOpacity(0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
@@ -336,9 +336,9 @@ class _StatusChip extends StatelessWidget {
       padding:
           const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.12),
+        color: _color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: _color.withValues(alpha: 0.3)),
+        border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
         status,
@@ -427,10 +427,10 @@ class _ReadOnlyFields extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.info.withValues(alpha: 0.06),
+              color: AppColors.info.withOpacity(0.06),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                  color: AppColors.info.withValues(alpha: 0.2)),
+                  color: AppColors.info.withOpacity(0.2)),
             ),
             child: Row(
               children: const [

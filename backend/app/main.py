@@ -91,7 +91,8 @@ def create_app() -> FastAPI:
     configure_cors(app)
 
     # 2. Rate limiting — before routing so abusive IPs are stopped early
-    app.add_middleware(RateLimitMiddleware)
+    if settings.ENVIRONMENT != "test":
+        app.add_middleware(RateLimitMiddleware)
 
     # 3. Audit logging — after auth middleware sets request.state.current_user
     app.add_middleware(AuditMiddleware)

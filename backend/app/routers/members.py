@@ -58,6 +58,7 @@ router = APIRouter(prefix="/members", tags=["Members"])
 _MEMBER_REGISTRY_BLOCKED_ROLES = {
     UserRole.FINANCE_ADMIN,
     UserRole.HR_ADMIN,
+    UserRole.MEMBER,
     UserRole.MEDICAL,
 }
 

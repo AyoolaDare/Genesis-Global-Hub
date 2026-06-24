@@ -19,6 +19,7 @@ import pytest
 
 from tests.conftest import auth_headers, make_token
 from tests.utils import (
+    create_active_member,
     create_sponsor,
     create_sponsor_payment,
     create_user,
@@ -49,8 +50,9 @@ def test_super_admin_can_list_sponsors(client, db, super_admin_user, super_admin
 
 def test_list_sponsors_response_excludes_member_link_id(client, db, finance_user, finance_token):
     """Sponsor list must never expose member_link_id."""
+    member = create_active_member(db, "Sponsor Hidden Link Member")
     sponsor = create_sponsor(db, created_by=finance_user.id)
-    sponsor.member_link_id = uuid.uuid4()
+    sponsor.member_link_id = member.id
     db.flush()
 
     response = client.get("/api/v1/sponsors", headers=auth_headers(finance_token))
@@ -219,8 +221,9 @@ def test_list_payments_for_sponsor(client, db, finance_user, finance_token):
 
 def test_payment_response_excludes_member_link_id(client, db, finance_user, finance_token):
     """Payment records must not expose member_link_id."""
+    member = create_active_member(db, "Payment Hidden Link Member")
     sponsor = create_sponsor(db, created_by=finance_user.id)
-    sponsor.member_link_id = uuid.uuid4()
+    sponsor.member_link_id = member.id
     db.flush()
 
     response = client.post(

@@ -64,10 +64,10 @@ class _VisitFormScreenState extends ConsumerState<VisitFormScreen> {
                   data: (patient) => Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.06),
+                      color: AppColors.primary.withOpacity(0.06),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.15)),
+                          color: AppColors.primary.withOpacity(0.15)),
                     ),
                     child: Row(
                       children: [

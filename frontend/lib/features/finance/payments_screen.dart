@@ -213,7 +213,7 @@ class _SummaryBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      color: AppColors.primary.withValues(alpha: 0.04),
+      color: AppColors.primary.withOpacity(0.04),
       child: Row(
         children: [
           _SummaryStat(
@@ -313,7 +313,7 @@ class _PaymentsTable extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: DataTable(
           headingRowColor:
-              WidgetStateProperty.all(AppColors.surface),
+              MaterialStateProperty.all(AppColors.surface),
           columns: const [
             DataColumn(label: Text('Sponsor')),
             DataColumn(label: Text('Amount')),
@@ -386,7 +386,7 @@ class _MethodBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.12),
+        color: _color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(

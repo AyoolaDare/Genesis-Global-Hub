@@ -1,0 +1,4 @@
+analyzer:
+  errors:
+    # Keep the frontend compatible with the Flutter 3.19 SDK used in CI.
+    deprecated_member_use: ignore

@@ -276,7 +276,7 @@ class _StatCard extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: item.color.withValues(alpha: 0.12),
+                  color: item.color.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(item.icon, size: 20, color: item.color),
@@ -402,7 +402,7 @@ class _MemberGrowthChart extends StatelessWidget {
                           barWidth: 3,
                           belowBarData: BarAreaData(
                             show: true,
-                            color: AppColors.primary.withValues(alpha: 0.08),
+                            color: AppColors.primary.withOpacity(0.08),
                           ),
                           dotData: const FlDotData(show: false),
                         ),

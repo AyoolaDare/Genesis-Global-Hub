@@ -348,10 +348,10 @@ class _LeaveRequestRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.05),
+        color: AppColors.warning.withOpacity(0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-            color: AppColors.warning.withValues(alpha: 0.2)),
+            color: AppColors.warning.withOpacity(0.2)),
       ),
       child: Row(
         children: [
@@ -445,7 +445,7 @@ class _StatCard extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: item.color.withValues(alpha: 0.12),
+                  color: item.color.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(item.icon, size: 20, color: item.color),
