@@ -4,7 +4,7 @@ Genesis Global CMS — External Integrations Package
 Exposes singleton clients for:
   - Flutterwave (payments)
   - Termii (SMS / WhatsApp)
-  - SendGrid (email)
+  - Brevo (email) via sendgrid_client compatibility shim
 """
 
 from app.integrations.flutterwave import flutterwave

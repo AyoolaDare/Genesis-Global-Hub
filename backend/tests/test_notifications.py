@@ -44,14 +44,15 @@ class TestNotificationService:
         # Should not raise
         assert result is None or isinstance(result, dict) or True
 
-    def test_queue_email_calls_sendgrid(self):
-        """queue_email should call the SendGrid client."""
+    def test_queue_email_calls_brevo(self):
+        """queue_email should call the Brevo client."""
         from app.services.notification_service import NotificationService
 
         service = NotificationService()
-        mock_sendgrid = MagicMock()
+        mock_brevo = MagicMock()
+        mock_brevo.send_email = MagicMock(return_value=True)
 
-        with patch.object(service, "_sendgrid", mock_sendgrid):
+        with patch.object(service, "_brevo", mock_brevo):
             service.queue_email(
                 to_email="member@test.com",
                 subject="Welcome!",
@@ -90,18 +91,28 @@ class TestTermiiIntegration:
             pytest.fail(f"TermiiClient initialization raised: {e}")
 
 
-class TestSendGridIntegration:
-    """Tests for the SendGrid email integration."""
+class TestBrevoIntegration:
+    """Tests for the Brevo email integration (replaces SendGrid)."""
 
-    def test_sendgrid_client_initializes_without_error(self):
-        """SendGridClient should initialize without raising."""
+    def test_brevo_client_initializes_without_error(self):
+        """BrevoClient should initialize without raising."""
+        from app.integrations.brevo import BrevoClient
+
+        try:
+            client = BrevoClient()
+            assert client is not None
+        except Exception as e:
+            pytest.fail(f"BrevoClient initialization raised: {e}")
+
+    def test_sendgrid_shim_initializes_without_error(self):
+        """SendGridClient shim (Brevo-backed) should initialize without raising."""
         from app.integrations.sendgrid import SendGridClient
 
         try:
             client = SendGridClient()
             assert client is not None
         except Exception as e:
-            pytest.fail(f"SendGridClient initialization raised: {e}")
+            pytest.fail(f"SendGridClient shim initialization raised: {e}")
 
 
 # ── Notification Triggered on Approval ─────────────────────────────────────────

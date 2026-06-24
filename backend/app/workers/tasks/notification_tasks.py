@@ -198,37 +198,21 @@ def send_payment_thank_you(payment_id: str) -> dict:
             sent = False
 
             if channel == "email" and sponsor.email:
-                # Send via SendGrid
-                sent = _run_async(
-                    sendgrid_client.send_annual_sponsor_report(
-                        to_email=sponsor.email,
-                        sponsor_name=sponsor.full_name,
-                        total_given=payment.amount,
-                        payment_count=1,
-                        year=datetime.now().year,
-                    )
-                )
-                # Override with a simple thank-you email instead
-                from sendgrid.helpers.mail import Mail
-                from app.config import get_settings
-                _settings = get_settings()
-                from sendgrid import SendGridAPIClient
-                mail = Mail(
-                    from_email=_settings.FROM_EMAIL,
-                    to_emails=sponsor.email,
-                    subject="Thank You for Your Generosity — Genesis Global",
-                    html_content=(
-                        f"<p>Dear {sponsor.full_name},</p>"
-                        f"<p>Thank you for your generous contribution of "
-                        f"<strong>₦{amount_str}</strong> to Genesis Global. "
-                        f"Your support makes a real difference. God bless you!</p>"
-                        f"<p>The Genesis Global Finance Team</p>"
-                    ),
+                from app.integrations.brevo import BrevoClient
+                brevo = BrevoClient()
+                html_body = (
+                    f"<p>Dear {sponsor.full_name},</p>"
+                    f"<p>Thank you for your generous contribution of "
+                    f"<strong>₦{amount_str}</strong> to Genesis Global. "
+                    f"Your support makes a real difference. God bless you!</p>"
+                    f"<p>The Genesis Global Finance Team</p>"
                 )
                 try:
-                    sg = SendGridAPIClient(_settings.SENDGRID_API_KEY)
-                    resp = sg.send(mail)
-                    sent = 200 <= resp.status_code < 300
+                    sent = brevo.send_email(
+                        to_email=sponsor.email,
+                        subject="Thank You for Your Generosity — Genesis Global",
+                        html_content=html_body,
+                    )
                 except Exception as email_exc:
                     logger.error("send_payment_thank_you email error: %s", str(email_exc))
                     sent = False
@@ -373,12 +357,10 @@ def send_admin_notification(
     Returns:
         Dict with keys: success, emails_sent, message.
     """
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
-    from app.config import get_settings
     from app.auth.models import AppUser, UserRole
+    from app.integrations.brevo import BrevoClient
 
-    _settings = get_settings()
+    brevo = BrevoClient()
     result: dict = {"success": False, "emails_sent": 0, "message": ""}
 
     try:
@@ -409,7 +391,6 @@ def send_admin_notification(
             logger.warning("send_admin_notification: no recipients for subject='%s'", subject)
             return result
 
-        sg = SendGridAPIClient(_settings.SENDGRID_API_KEY)
         sent_count = 0
 
         for email in recipients:
@@ -422,15 +403,13 @@ def send_admin_notification(
                     f"<p style='color:#666;font-size:12px;'>Genesis Global CMS — Automated Notification</p>"
                     f"</body></html>"
                 )
-                mail = Mail(
-                    from_email=_settings.FROM_EMAIL,
-                    to_emails=email,
+                ok = brevo.send_email(
+                    to_email=email,
                     subject=subject,
                     html_content=html_body,
+                    text_content=message,
                 )
-                mail.plain_text_content = message
-                resp = sg.send(mail)
-                if 200 <= resp.status_code < 300:
+                if ok:
                     sent_count += 1
             except Exception as email_exc:
                 logger.error(
@@ -511,19 +490,19 @@ def process_notification_queue() -> dict:
                         subject = payload.get("subject", "Genesis Global Notification")
                         message = payload.get("message", "")
                         if to_email and message:
-                            from sendgrid import SendGridAPIClient
-                            from sendgrid.helpers.mail import Mail
-                            from app.config import get_settings
-                            _settings = get_settings()
-                            mail = Mail(
-                                from_email=_settings.FROM_EMAIL,
-                                to_emails=to_email,
-                                subject=subject,
-                                plain_text_content=message,
+                            from app.integrations.brevo import BrevoClient
+                            brevo = BrevoClient()
+                            html_content = (
+                                f"<html><body><p>{message}</p>"
+                                "<hr><p style='color:#666;font-size:12px;'>Genesis Global CMS</p>"
+                                "</body></html>"
                             )
-                            sg = SendGridAPIClient(_settings.SENDGRID_API_KEY)
-                            resp = sg.send(mail)
-                            sent = 200 <= resp.status_code < 300
+                            sent = brevo.send_email(
+                                to_email=to_email,
+                                subject=subject,
+                                html_content=html_content,
+                                text_content=message,
+                            )
 
                     else:
                         logger.warning(
