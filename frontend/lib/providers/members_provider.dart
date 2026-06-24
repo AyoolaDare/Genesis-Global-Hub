@@ -92,14 +92,19 @@ class Member {
   String get fullName => '$firstName $lastName';
 
   factory Member.fromJson(Map<String, dynamic> json) {
+    final fullName = (json['full_name'] ?? '').toString().trim();
+    final spaceIdx = fullName.indexOf(' ');
+    final firstName = spaceIdx >= 0 ? fullName.substring(0, spaceIdx) : fullName;
+    final lastName = spaceIdx >= 0 ? fullName.substring(spaceIdx + 1) : '';
     return Member(
       id: json['id'] ?? '',
-      firstName: json['first_name'] ?? '',
-      lastName: json['last_name'] ?? '',
+      firstName: firstName,
+      lastName: lastName,
       email: json['email'],
       phone: json['phone'],
       photoUrl: json['photo_url'],
-      status: MemberStatusExtension.fromString(json['status'] ?? 'PENDING'),
+      status: MemberStatusExtension.fromString(
+          json['membership_status'] ?? json['status'] ?? 'PENDING'),
       role: json['role'] ?? 'MEMBER',
       joinedAt: json['joined_at'] != null
           ? DateTime.tryParse(json['joined_at'])
@@ -107,14 +112,14 @@ class Member {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
-      submittedBy: json['submitted_by'],
+      submittedBy: json['submitted_by']?.toString(),
       submittedByName: json['submitted_by_name'],
       submittedAt: json['submitted_at'] != null
           ? DateTime.tryParse(json['submitted_at'])
           : null,
-      notes: json['notes'],
+      notes: json['submitter_notes'] ?? json['notes'],
       isDuplicateFlagged: json['is_duplicate_flagged'] ?? false,
-      duplicateOfId: json['duplicate_of_id'],
+      duplicateOfId: (json['duplicate_of'] ?? json['duplicate_of_id'])?.toString(),
       spiritualData: json['spiritual_data'],
       departmentIds: json['department_ids'] != null
           ? List<String>.from(json['department_ids'])
@@ -179,18 +184,20 @@ class MemberCreate {
     this.notes,
   });
 
-  Map<String, dynamic> toJson() => {
-        'first_name': firstName,
-        'last_name': lastName,
-        'email': email,
-        'phone': phone,
-        'address': address,
-        'gender': gender,
-        'date_of_birth': dateOfBirth?.toIso8601String(),
-        'occupation': occupation,
-        'marital_status': maritalStatus,
-        'notes': notes,
-      };
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'full_name': '$firstName $lastName'.trim(),
+      'phone': phone,
+      if (email != null && email!.isNotEmpty) 'email': email,
+      if (address != null && address!.isNotEmpty) 'address': address,
+      if (gender != null) 'gender': gender!.toUpperCase(),
+      if (dateOfBirth != null)
+        'date_of_birth': dateOfBirth!.toIso8601String().substring(0, 10),
+      if (maritalStatus != null) 'marital_status': maritalStatus!.toUpperCase(),
+      if (notes != null && notes!.isNotEmpty) 'submitter_notes': notes,
+    };
+    return map;
+  }
 }
 
 class MembersList {
