@@ -13,6 +13,7 @@ class Department {
   final String? headId;
   final String? headName;
   final int memberCount;
+  final int teamCount;
 
   const Department({
     required this.id,
@@ -21,6 +22,7 @@ class Department {
     this.headId,
     this.headName,
     this.memberCount = 0,
+    this.teamCount = 0,
   });
 
   factory Department.fromJson(Map<String, dynamic> json) {
@@ -28,9 +30,10 @@ class Department {
       id: json['id'] ?? '',
       name: json['name'] ?? '',
       description: json['description'],
-      headId: json['head_id'],
+      headId: json['head_id']?.toString(),
       headName: json['head_name'],
       memberCount: json['member_count'] ?? 0,
+      teamCount: json['team_count'] ?? 0,
     );
   }
 }
@@ -40,6 +43,7 @@ class Team {
   final String name;
   final String? description;
   final String? departmentId;
+  final String? departmentName;
   final String? leaderId;
   final String? leaderName;
   final int memberCount;
@@ -49,6 +53,7 @@ class Team {
     required this.name,
     this.description,
     this.departmentId,
+    this.departmentName,
     this.leaderId,
     this.leaderName,
     this.memberCount = 0,
@@ -60,7 +65,8 @@ class Team {
       name: json['name'] ?? '',
       description: json['description'],
       departmentId: json['department_id']?.toString(),
-      leaderId: json['leader_id'],
+      departmentName: json['department_name'],
+      leaderId: json['leader_id']?.toString(),
       leaderName: json['leader_name'],
       memberCount: json['member_count'] ?? 0,
     );
@@ -72,7 +78,9 @@ class Group {
   final String name;
   final String? description;
   final String? teamId;
+  final String? teamName;
   final String? departmentId;
+  final String? departmentName;
   final String? leaderId;
   final String? leaderName;
   final int memberCount;
@@ -82,7 +90,9 @@ class Group {
     required this.name,
     this.description,
     this.teamId,
+    this.teamName,
     this.departmentId,
+    this.departmentName,
     this.leaderId,
     this.leaderName,
     this.memberCount = 0,
@@ -94,7 +104,9 @@ class Group {
       name: json['name'] ?? '',
       description: json['description'],
       teamId: json['team_id']?.toString(),
+      teamName: json['team_name'],
       departmentId: json['department_id']?.toString(),
+      departmentName: json['department_name'],
       leaderId: json['leader_id']?.toString(),
       leaderName: json['leader_name'],
       memberCount: json['member_count'] ?? 0,

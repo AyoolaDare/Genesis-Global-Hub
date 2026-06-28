@@ -11,7 +11,7 @@ from app.auth.dependencies import get_current_user, require_role
 from app.auth.models import AppUser
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
-from app.models.structure import MemberAssignment
+from app.models.structure import Department as DeptModel, Group as GroupModel, MemberAssignment, Team as TeamModel
 from app.schemas.structure import (
     AssignHeadRequest,
     AssignLeaderRequest,
@@ -56,12 +56,18 @@ async def list_departments_endpoint(
     db: Session = Depends(get_db),
 ):
     items, total = list_departments(db, page, per_page)
-    data = [
-        {
+    data = []
+    for d in items:
+        head_email = None
+        if d.head_user_id:
+            head_user = db.get(AppUser, d.head_user_id)
+            head_email = head_user.email if head_user else None
+        data.append({
             "id": d.id,
             "name": d.name,
             "description": d.description,
-            "head_user_id": d.head_user_id,
+            "head_id": d.head_user_id,
+            "head_name": head_email,
             "member_count": db.query(func.count(MemberAssignment.id))
             .filter(
                 MemberAssignment.assignment_type == "DEPARTMENT",
@@ -69,13 +75,13 @@ async def list_departments_endpoint(
                 MemberAssignment.left_at.is_(None),
                 MemberAssignment.deleted_at.is_(None),
             )
-            .scalar()
-            or 0,
+            .scalar() or 0,
+            "team_count": db.query(func.count(TeamModel.id))
+            .filter(TeamModel.department_id == d.id, TeamModel.deleted_at.is_(None))
+            .scalar() or 0,
             "created_at": d.created_at,
             "updated_at": d.updated_at,
-        }
-        for d in items
-    ]
+        })
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 
 
@@ -174,12 +180,23 @@ async def list_teams_endpoint(
     db: Session = Depends(get_db),
 ):
     items, total = list_teams(db, current_user, request, page, per_page)
-    data = [
-        {
+    data = []
+    for t in items:
+        leader_email = None
+        if t.leader_user_id:
+            leader = db.get(AppUser, t.leader_user_id)
+            leader_email = leader.email if leader else None
+        dept_name = None
+        if t.department_id:
+            dept = db.get(DeptModel, t.department_id)
+            dept_name = dept.name if dept else None
+        data.append({
             "id": t.id,
             "name": t.name,
             "department_id": t.department_id,
-            "leader_user_id": t.leader_user_id,
+            "department_name": dept_name,
+            "leader_id": t.leader_user_id,
+            "leader_name": leader_email,
             "member_count": db.query(func.count(MemberAssignment.id))
             .filter(
                 MemberAssignment.assignment_type == "TEAM",
@@ -187,12 +204,9 @@ async def list_teams_endpoint(
                 MemberAssignment.left_at.is_(None),
                 MemberAssignment.deleted_at.is_(None),
             )
-            .scalar()
-            or 0,
+            .scalar() or 0,
             "created_at": t.created_at,
-        }
-        for t in items
-    ]
+        })
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 
 
@@ -247,13 +261,29 @@ async def list_groups_endpoint(
     db: Session = Depends(get_db),
 ):
     items, total = list_groups(db, current_user, request, page, per_page)
-    data = [
-        {
+    data = []
+    for g in items:
+        leader_email = None
+        if g.leader_user_id:
+            leader = db.get(AppUser, g.leader_user_id)
+            leader_email = leader.email if leader else None
+        dept_name = None
+        if g.department_id:
+            dept = db.get(DeptModel, g.department_id)
+            dept_name = dept.name if dept else None
+        team_name = None
+        if g.team_id:
+            team = db.get(TeamModel, g.team_id)
+            team_name = team.name if team else None
+        data.append({
             "id": g.id,
             "name": g.name,
             "department_id": g.department_id,
+            "department_name": dept_name,
             "team_id": g.team_id,
-            "leader_user_id": g.leader_user_id,
+            "team_name": team_name,
+            "leader_id": g.leader_user_id,
+            "leader_name": leader_email,
             "member_count": db.query(func.count(MemberAssignment.id))
             .filter(
                 MemberAssignment.assignment_type == "GROUP",
@@ -261,12 +291,9 @@ async def list_groups_endpoint(
                 MemberAssignment.left_at.is_(None),
                 MemberAssignment.deleted_at.is_(None),
             )
-            .scalar()
-            or 0,
+            .scalar() or 0,
             "created_at": g.created_at,
-        }
-        for g in items
-    ]
+        })
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 
 

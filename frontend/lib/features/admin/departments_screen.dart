@@ -66,9 +66,9 @@ class DepartmentsScreen extends ConsumerWidget {
                     emptyTitle: 'No teams yet',
                     itemIcon: Icons.groups_outlined,
                     titleOf: (team) => team.name,
-                    subtitleOf: (team) => team.departmentId == null
-                        ? 'Standalone team'
-                        : 'Linked department: ${team.departmentId}',
+                    subtitleOf: (team) => team.departmentName != null
+                        ? 'Dept: ${team.departmentName}'
+                        : 'Standalone team',
                     trailingOf: (team) => '${team.memberCount} members',
                   ),
                   _StructureList<Group>(
@@ -77,12 +77,11 @@ class DepartmentsScreen extends ConsumerWidget {
                     emptyTitle: 'No groups yet',
                     itemIcon: Icons.diversity_3_outlined,
                     titleOf: (group) => group.name,
-                    subtitleOf: (group) =>
-                        group.teamId != null
-                            ? 'Linked team: ${group.teamId}'
-                            : group.departmentId != null
-                                ? 'Linked department: ${group.departmentId}'
-                                : 'Standalone group',
+                    subtitleOf: (group) => group.teamName != null
+                        ? 'Team: ${group.teamName}'
+                        : group.departmentName != null
+                            ? 'Dept: ${group.departmentName}'
+                            : 'Standalone group',
                     trailingOf: (group) => '${group.memberCount} members',
                   ),
                 ],
@@ -546,6 +545,10 @@ class _DepartmentCard extends StatelessWidget {
               _InfoChip(
                   label: '${department.memberCount} members',
                   icon: Icons.people_outline),
+              const SizedBox(width: 8),
+              _InfoChip(
+                  label: '${department.teamCount} teams',
+                  icon: Icons.groups_outlined),
             ],
           ),
           if (department.headName != null) ...[
