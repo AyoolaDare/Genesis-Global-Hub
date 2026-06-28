@@ -21,6 +21,14 @@ class ApiException implements Exception {
 
   @override
   String toString() => 'ApiException($statusCode): $message';
+
+  /// Extracts an [ApiException] from a caught error, unwrapping a
+  /// [DioException] wrapper if present.
+  static ApiException? from(dynamic e) {
+    if (e is ApiException) return e;
+    if (e is DioException && e.error is ApiException) return e.error as ApiException;
+    return null;
+  }
 }
 
 class UnauthorizedException extends ApiException {
@@ -150,6 +158,8 @@ class _ResponseInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     final response = err.response;
+    ApiException apiError;
+
     if (response != null) {
       final data = response.data;
       String message = 'An error occurred';
@@ -167,20 +177,11 @@ class _ResponseInterceptor extends Interceptor {
 
       switch (response.statusCode) {
         case 401:
-          Error.throwWithStackTrace(
-            UnauthorizedException(message: message, code: code),
-            StackTrace.current,
-          );
+          apiError = UnauthorizedException(message: message, code: code);
         case 403:
-          Error.throwWithStackTrace(
-            ForbiddenException(message: message, code: code),
-            StackTrace.current,
-          );
+          apiError = ForbiddenException(message: message, code: code);
         case 404:
-          Error.throwWithStackTrace(
-            NotFoundException(message: message, code: code),
-            StackTrace.current,
-          );
+          apiError = NotFoundException(message: message, code: code);
         case 422:
           Map<String, List<String>> fieldErrors = {};
           if (data is Map && data['errors'] is Map) {
@@ -191,39 +192,38 @@ class _ResponseInterceptor extends Interceptor {
                   : [v.toString()];
             });
           }
-          Error.throwWithStackTrace(
-            ValidationException(
-                message: message, code: code, fieldErrors: fieldErrors),
-            StackTrace.current,
-          );
+          apiError = ValidationException(
+              message: message, code: code, fieldErrors: fieldErrors);
         case 500:
         case 502:
         case 503:
-          Error.throwWithStackTrace(
-            ServerException(message: message, code: code),
-            StackTrace.current,
-          );
+          apiError = ServerException(message: message, code: code);
         default:
-          Error.throwWithStackTrace(
-            ApiException(
-              message: message,
-              code: code,
-              statusCode: response.statusCode,
-            ),
-            StackTrace.current,
+          apiError = ApiException(
+            message: message,
+            code: code,
+            statusCode: response.statusCode,
           );
       }
     } else {
-      // Network error
-      Error.throwWithStackTrace(
-        ApiException(
-          message:
-              'Network error. Please check your internet connection.',
-          statusCode: null,
-        ),
-        StackTrace.current,
+      apiError = const ApiException(
+        message: 'Network error. Please check your internet connection.',
+        statusCode: null,
       );
     }
+
+    // Use handler.reject() — the correct Dio pattern.
+    // Throwing from onError can be swallowed by Dio's interceptor machinery.
+    handler.reject(
+      DioException(
+        requestOptions: err.requestOptions,
+        response: err.response,
+        type: err.type,
+        error: apiError,
+        stackTrace: err.stackTrace,
+        message: apiError.message,
+      ),
+    );
   }
 }
 

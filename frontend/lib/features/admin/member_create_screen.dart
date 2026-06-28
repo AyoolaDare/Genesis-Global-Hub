@@ -170,9 +170,16 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
         context.pop();
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Failed to create member: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (!mounted) return;
+      final apiError = ApiException.from(e);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = apiError is ForbiddenException
+            ? 'You don\'t have permission to add members.'
+            : apiError is ValidationException
+                ? 'Validation error: ${apiError.message}'
+                : apiError?.message ?? 'Failed to create member. Please try again.';
+      });
     }
   }
 

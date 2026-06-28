@@ -125,12 +125,21 @@ class _CreateDepartmentDialogState
       widget.onCreated();
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
+      if (!mounted) return;
+      final apiError = ApiException.from(e);
       setState(() {
         _isLoading = false;
-        _error = e.toString().contains('already exists') ||
-                e.toString().contains('409')
-            ? 'A department with this name already exists.'
-            : 'Failed to create department. Please try again.';
+        if (apiError is ForbiddenException) {
+          _error = 'Permission denied. Only super-admins and pastors can create departments.';
+        } else if (apiError is UnauthorizedException) {
+          _error = 'Your session has expired. Please log in again.';
+        } else if (apiError != null &&
+            (apiError.statusCode == 409 ||
+                apiError.message.toLowerCase().contains('already exists'))) {
+          _error = 'A department with this name already exists.';
+        } else {
+          _error = apiError?.message ?? 'Failed to create department. Please try again.';
+        }
       });
     }
   }

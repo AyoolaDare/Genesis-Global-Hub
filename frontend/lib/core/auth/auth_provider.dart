@@ -110,11 +110,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState(isAuthenticated: false, isLoading: false);
   }
 
-  String _parseError(Exception e) {
-    final msg = e.toString();
-    if (msg.contains('401') || msg.contains('Invalid credentials')) {
-      return 'Invalid email or password. Please try again.';
+  String _parseError(dynamic e) {
+    final api = ApiException.from(e);
+    if (api != null) {
+      if (api.statusCode == 401) return 'Invalid email or password. Please try again.';
+      if (api.message.isNotEmpty) return api.message;
     }
+    final msg = e.toString();
     if (msg.contains('SocketException') || msg.contains('Connection')) {
       return 'Unable to connect. Please check your internet connection.';
     }
