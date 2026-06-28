@@ -1,10 +1,17 @@
 class ApiEndpoints {
   ApiEndpoints._();
 
-  static const String baseUrl = String.fromEnvironment(
+  static const String _configuredBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://localhost:8000/api/v1',
   );
+  static final String baseUrl = _normalizeBaseUrl(_configuredBaseUrl);
+
+  static String _normalizeBaseUrl(String value) {
+    final trimmed = value.trim().replaceAll(RegExp(r'/+$'), '');
+    if (trimmed.endsWith('/api/v1')) return trimmed;
+    return '$trimmed/api/v1';
+  }
 
   // Auth
   static const String login = '/auth/login';

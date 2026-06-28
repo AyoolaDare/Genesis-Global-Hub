@@ -21,7 +21,7 @@ flutter precache --web
 flutter pub get
 flutter build web \
   --release \
-  --pwa-strategy=offline-first \
+  --pwa-strategy=none \
   --dart-define=API_BASE_URL="${API_BASE_URL}"
 
 test -f build/web/index.html

@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Comma-separated list of allowed origins
     ALLOWED_ORIGINS: str = ""
+    CORS_ORIGINS: str = ""
+    FRONTEND_URL: str = ""
 
     # ── Render (internal service routing) ─────────────────────────────────────
     RENDER_INTERNAL_URL: str = ""
@@ -104,10 +106,22 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origins_list(self) -> List[str]:
-        """Return ALLOWED_ORIGINS as a Python list."""
-        if not self.ALLOWED_ORIGINS:
-            return []
-        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+        """Return configured browser origins from supported env aliases."""
+        raw_values = [
+            self.ALLOWED_ORIGINS,
+            self.CORS_ORIGINS,
+            self.FRONTEND_URL,
+        ]
+        origins: list[str] = []
+        for raw in raw_values:
+            if not raw:
+                continue
+            origins.extend(
+                origin.strip().rstrip("/")
+                for origin in raw.split(",")
+                if origin.strip()
+            )
+        return list(dict.fromkeys(origins))
 
     @property
     def is_production(self) -> bool:
