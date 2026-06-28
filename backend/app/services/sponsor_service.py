@@ -185,7 +185,7 @@ def list_all_payments(
             SponsorPayment.deleted_at.is_(None),
             Sponsor.deleted_at.is_(None),
         )
-        .order_by(SponsorPayment.payment_date.desc().nullslast())
+        .order_by(SponsorPayment.payment_date.desc().nulls_last())
     )
 
     if status:
@@ -376,7 +376,7 @@ def get_finance_dashboard(db: Session) -> dict:
             Sponsor.deleted_at.is_(None),
             SponsorPayment.status == PaymentStatusEnum.COMPLETED,
         )
-        .order_by(SponsorPayment.payment_date.desc().nullslast())
+        .order_by(SponsorPayment.payment_date.desc().nulls_last())
         .limit(8)
         .all()
     )

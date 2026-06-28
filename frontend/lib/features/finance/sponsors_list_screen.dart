@@ -555,14 +555,13 @@ class _CreateSponsorSheetState
     try {
       final dio = ref.read(dioProvider);
       await dio.post(ApiEndpoints.sponsors, data: {
-        'name': _nameController.text.trim(),
+        'full_name': _nameController.text.trim(),
         if (_phoneController.text.trim().isNotEmpty)
           'phone': _phoneController.text.trim(),
         if (_emailController.text.trim().isNotEmpty)
           'email': _emailController.text.trim(),
-        if (_amountController.text.trim().isNotEmpty)
-          'pledge_amount': double.tryParse(_amountController.text.trim()),
-        if (_tier != null) 'category': _tier,
+        'amount': double.tryParse(_amountController.text.trim()) ?? 0.0,
+        'sponsorship_tier': _tier ?? 'MONTHLY',
       });
       widget.onCreated();
       if (mounted) Navigator.of(context).pop();
