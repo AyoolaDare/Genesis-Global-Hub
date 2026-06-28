@@ -13,7 +13,6 @@ class Department {
   final String? headId;
   final String? headName;
   final int memberCount;
-  final int teamCount;
 
   const Department({
     required this.id,
@@ -22,7 +21,6 @@ class Department {
     this.headId,
     this.headName,
     this.memberCount = 0,
-    this.teamCount = 0,
   });
 
   factory Department.fromJson(Map<String, dynamic> json) {
@@ -33,7 +31,6 @@ class Department {
       headId: json['head_id'],
       headName: json['head_name'],
       memberCount: json['member_count'] ?? 0,
-      teamCount: json['team_count'] ?? 0,
     );
   }
 }
@@ -42,7 +39,7 @@ class Team {
   final String id;
   final String name;
   final String? description;
-  final String departmentId;
+  final String? departmentId;
   final String? leaderId;
   final String? leaderName;
   final int memberCount;
@@ -51,7 +48,7 @@ class Team {
     required this.id,
     required this.name,
     this.description,
-    required this.departmentId,
+    this.departmentId,
     this.leaderId,
     this.leaderName,
     this.memberCount = 0,
@@ -62,7 +59,7 @@ class Team {
       id: json['id'] ?? '',
       name: json['name'] ?? '',
       description: json['description'],
-      departmentId: json['department_id'] ?? '',
+      departmentId: json['department_id']?.toString(),
       leaderId: json['leader_id'],
       leaderName: json['leader_name'],
       memberCount: json['member_count'] ?? 0,

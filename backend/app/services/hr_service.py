@@ -343,6 +343,7 @@ def get_hr_dashboard(db: Session) -> dict:
         "total_workers": total_workers,
         "active_workers": active_workers,
         "volunteers": volunteers,
-        "pending_leave_requests": pending_leave,
-        "by_department": by_department,
+        "pending_leave": pending_leave,
+        "dept_breakdown": by_department,
+        "pending_leave_requests": [],
     }

@@ -25,6 +25,18 @@ class DepartmentsScreen extends ConsumerWidget {
           icon: const Icon(Icons.add, size: 18),
           label: const Text('New Department'),
         ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: () => _showCreateTeamDialog(context, ref),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('New Team'),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: () => _showCreateGroupDialog(context, ref),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('New Group'),
+        ),
         const SizedBox(width: 16),
       ],
       child: DefaultTabController(
@@ -54,7 +66,9 @@ class DepartmentsScreen extends ConsumerWidget {
                     emptyTitle: 'No teams yet',
                     itemIcon: Icons.groups_outlined,
                     titleOf: (team) => team.name,
-                    subtitleOf: (team) => 'Department ID: ${team.departmentId}',
+                    subtitleOf: (team) => team.departmentId == null
+                        ? 'Standalone team'
+                        : 'Linked department: ${team.departmentId}',
                     trailingOf: (team) => '${team.memberCount} members',
                   ),
                   _StructureList<Group>(
@@ -64,7 +78,11 @@ class DepartmentsScreen extends ConsumerWidget {
                     itemIcon: Icons.diversity_3_outlined,
                     titleOf: (group) => group.name,
                     subtitleOf: (group) =>
-                        group.teamId != null ? 'Team ID: ${group.teamId}' : 'Department ID: ${group.departmentId ?? 'N/A'}',
+                        group.teamId != null
+                            ? 'Linked team: ${group.teamId}'
+                            : group.departmentId != null
+                                ? 'Linked department: ${group.departmentId}'
+                                : 'Standalone group',
                     trailingOf: (group) => '${group.memberCount} members',
                   ),
                 ],
@@ -81,6 +99,30 @@ class DepartmentsScreen extends ConsumerWidget {
       context: context,
       builder: (_) => _CreateDepartmentDialog(
         onCreated: () => ref.invalidate(departmentsProvider),
+      ),
+    );
+  }
+
+  void _showCreateTeamDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (_) => _CreateStructureDialog(
+        title: 'Create Team',
+        label: 'Team Name *',
+        endpoint: ApiEndpoints.teams,
+        onCreated: () => ref.invalidate(teamsProvider),
+      ),
+    );
+  }
+
+  void _showCreateGroupDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (_) => _CreateStructureDialog(
+        title: 'Create Group',
+        label: 'Group Name *',
+        endpoint: ApiEndpoints.groups,
+        onCreated: () => ref.invalidate(groupsProvider),
       ),
     );
   }
@@ -335,6 +377,110 @@ class _CreateDepartmentDialogState
   }
 }
 
+class _CreateStructureDialog extends ConsumerStatefulWidget {
+  final String title;
+  final String label;
+  final String endpoint;
+  final VoidCallback onCreated;
+
+  const _CreateStructureDialog({
+    required this.title,
+    required this.label,
+    required this.endpoint,
+    required this.onCreated,
+  });
+
+  @override
+  ConsumerState<_CreateStructureDialog> createState() =>
+      _CreateStructureDialogState();
+}
+
+class _CreateStructureDialogState extends ConsumerState<_CreateStructureDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  bool _isLoading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.post(widget.endpoint, data: {
+        'name': _nameController.text.trim(),
+      });
+      widget.onCreated();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      final apiError = ApiException.from(e);
+      setState(() {
+        _isLoading = false;
+        _error = apiError?.message ?? 'Failed to create record.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_error != null) ...[
+              Text(_error!, style: const TextStyle(color: AppColors.error)),
+              const SizedBox(height: 12),
+            ],
+            TextFormField(
+              controller: _nameController,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: widget.label,
+                border: const OutlineInputBorder(),
+              ),
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Name is required' : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _submit,
+          child: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.white,
+                  ),
+                )
+              : const Text('Create'),
+        ),
+      ],
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Department card
 // ---------------------------------------------------------------------------
@@ -400,10 +546,6 @@ class _DepartmentCard extends StatelessWidget {
               _InfoChip(
                   label: '${department.memberCount} members',
                   icon: Icons.people_outline),
-              const SizedBox(width: 8),
-              _InfoChip(
-                  label: '${department.teamCount} teams',
-                  icon: Icons.groups_outlined),
             ],
           ),
           if (department.headName != null) ...[

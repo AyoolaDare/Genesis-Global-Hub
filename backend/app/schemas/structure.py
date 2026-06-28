@@ -47,12 +47,13 @@ class DepartmentDetailResponse(DepartmentResponse):
 
 class TeamCreate(BaseSchema):
     name: str = Field(..., min_length=2, max_length=255)
-    department_id: uuid.UUID
+    department_id: Optional[uuid.UUID] = None
     leader_user_id: Optional[uuid.UUID] = None
 
 
 class TeamUpdate(BaseSchema):
     name: Optional[str] = Field(None, min_length=2, max_length=255)
+    department_id: Optional[uuid.UUID] = None
     leader_user_id: Optional[uuid.UUID] = None
 
 
@@ -63,7 +64,7 @@ class AssignLeaderRequest(BaseSchema):
 class TeamResponse(BaseSchema):
     id: uuid.UUID
     name: str
-    department_id: uuid.UUID
+    department_id: Optional[uuid.UUID] = None
     leader_user_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
@@ -79,13 +80,14 @@ class TeamSummary(BaseSchema):
 
 class GroupCreate(BaseSchema):
     name: str = Field(..., min_length=2, max_length=255)
-    department_id: uuid.UUID
+    department_id: Optional[uuid.UUID] = None
     team_id: Optional[uuid.UUID] = None
     leader_user_id: Optional[uuid.UUID] = None
 
 
 class GroupUpdate(BaseSchema):
     name: Optional[str] = Field(None, min_length=2, max_length=255)
+    department_id: Optional[uuid.UUID] = None
     team_id: Optional[uuid.UUID] = None
     leader_user_id: Optional[uuid.UUID] = None
 
@@ -93,7 +95,7 @@ class GroupUpdate(BaseSchema):
 class GroupResponse(BaseSchema):
     id: uuid.UUID
     name: str
-    department_id: uuid.UUID
+    department_id: Optional[uuid.UUID] = None
     team_id: Optional[uuid.UUID] = None
     leader_user_id: Optional[uuid.UUID] = None
     created_at: datetime

@@ -11,7 +11,7 @@ from app.auth.dependencies import get_current_user, require_role
 from app.auth.models import AppUser
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
-from app.models.structure import MemberAssignment, Team
+from app.models.structure import MemberAssignment
 from app.schemas.structure import (
     AssignHeadRequest,
     AssignLeaderRequest,
@@ -69,10 +69,6 @@ async def list_departments_endpoint(
                 MemberAssignment.left_at.is_(None),
                 MemberAssignment.deleted_at.is_(None),
             )
-            .scalar()
-            or 0,
-            "team_count": db.query(func.count(Team.id))
-            .filter(Team.department_id == d.id, Team.deleted_at.is_(None))
             .scalar()
             or 0,
             "created_at": d.created_at,
@@ -184,6 +180,15 @@ async def list_teams_endpoint(
             "name": t.name,
             "department_id": t.department_id,
             "leader_user_id": t.leader_user_id,
+            "member_count": db.query(func.count(MemberAssignment.id))
+            .filter(
+                MemberAssignment.assignment_type == "TEAM",
+                MemberAssignment.assignment_id == t.id,
+                MemberAssignment.left_at.is_(None),
+                MemberAssignment.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0,
             "created_at": t.created_at,
         }
         for t in items
@@ -249,6 +254,15 @@ async def list_groups_endpoint(
             "department_id": g.department_id,
             "team_id": g.team_id,
             "leader_user_id": g.leader_user_id,
+            "member_count": db.query(func.count(MemberAssignment.id))
+            .filter(
+                MemberAssignment.assignment_type == "GROUP",
+                MemberAssignment.assignment_id == g.id,
+                MemberAssignment.left_at.is_(None),
+                MemberAssignment.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0,
             "created_at": g.created_at,
         }
         for g in items

@@ -78,8 +78,8 @@ class ApiEndpoints {
   static const String leaveRequests = '/hr/leave-requests';
 
   // KPI
-  static const String kpiConfigs = '/kpi/configs';
-  static String kpiConfigById(String id) => '/kpi/configs/$id';
+  static const String kpiConfigs = '/kpi/definitions';
+  static String kpiConfigById(String id) => '/kpi/definitions/$id';
   static const String kpiReports = '/kpi/reports';
 
   // Audit

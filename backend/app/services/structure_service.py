@@ -142,12 +142,12 @@ def get_team(team_id: uuid.UUID, db: Session) -> Team:
 
 
 def create_team(data: TeamCreate, current_user: AppUser, db: Session) -> Team:
-    # Verify dept exists
-    dept = db.query(Department).filter(
-        Department.id == data.department_id, Department.deleted_at.is_(None)
-    ).first()
-    if not dept:
-        raise NotFound(message=f"Department {data.department_id} not found.")
+    if data.department_id is not None:
+        dept = db.query(Department).filter(
+            Department.id == data.department_id, Department.deleted_at.is_(None)
+        ).first()
+        if not dept:
+            raise NotFound(message=f"Department {data.department_id} not found.")
 
     team = Team(
         name=data.name,
@@ -244,11 +244,19 @@ def get_group(group_id: uuid.UUID, db: Session) -> Group:
 
 
 def create_group(data: GroupCreate, current_user: AppUser, db: Session) -> Group:
-    dept = db.query(Department).filter(
-        Department.id == data.department_id, Department.deleted_at.is_(None)
-    ).first()
-    if not dept:
-        raise NotFound(message=f"Department {data.department_id} not found.")
+    if data.department_id is not None:
+        dept = db.query(Department).filter(
+            Department.id == data.department_id, Department.deleted_at.is_(None)
+        ).first()
+        if not dept:
+            raise NotFound(message=f"Department {data.department_id} not found.")
+
+    if data.team_id is not None:
+        team = db.query(Team).filter(
+            Team.id == data.team_id, Team.deleted_at.is_(None)
+        ).first()
+        if not team:
+            raise NotFound(message=f"Team {data.team_id} not found.")
 
     group = Group(
         name=data.name,

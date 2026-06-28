@@ -30,10 +30,11 @@ class KpiConfig {
       id: json['id'] ?? '',
       name: json['name'] ?? '',
       description: json['description'] ?? '',
-      unit: json['unit'] ?? '',
-      target: (json['target'] ?? 0.0).toDouble(),
-      frequency: json['frequency'] ?? 'MONTHLY',
-      departmentId: json['department_id'] ?? '',
+      unit: json['target_unit'] ?? json['unit'] ?? '',
+      target: (json['target_value'] ?? json['target'] ?? 0.0).toDouble(),
+      frequency: json['period'] ?? json['frequency'] ?? 'MONTHLY',
+      departmentId:
+          (json['entity_id'] ?? json['department_id'] ?? '').toString(),
       departmentName: json['department_name'],
       isActive: json['is_active'] ?? true,
     );

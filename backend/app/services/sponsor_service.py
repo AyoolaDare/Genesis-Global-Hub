@@ -352,15 +352,47 @@ def get_finance_dashboard(db: Session) -> dict:
 
     overdue_list = []
     for sponsor, payment in overdue:
+        days_overdue = 0
+        if payment and payment.next_due_date:
+            days_overdue = (now.date() - payment.next_due_date).days
         overdue_list.append({
             "id": sponsor.id,
+            "name": sponsor.full_name,
             "full_name": sponsor.full_name,
             "phone": sponsor.phone,
+            "tier": sponsor.sponsorship_tier.value,
             "sponsorship_tier": sponsor.sponsorship_tier,
             "amount": float(sponsor.amount),
+            "days_overdue": days_overdue,
             "last_payment_date": payment.payment_date if payment else None,
             "next_due_date": payment.next_due_date if payment else None,
         })
+
+    recent_payments = (
+        db.query(SponsorPayment, Sponsor)
+        .join(Sponsor, Sponsor.id == SponsorPayment.sponsor_id)
+        .filter(
+            SponsorPayment.deleted_at.is_(None),
+            Sponsor.deleted_at.is_(None),
+            SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+        )
+        .order_by(SponsorPayment.payment_date.desc().nullslast())
+        .limit(8)
+        .all()
+    )
+
+    recent_payment_list = [
+        {
+            "id": payment.id,
+            "sponsor_id": sponsor.id,
+            "sponsor_name": sponsor.full_name,
+            "amount": float(payment.amount),
+            "date": payment.payment_date.strftime("%d/%m/%Y")
+            if payment.payment_date
+            else "",
+        }
+        for payment, sponsor in recent_payments
+    ]
 
     return {
         "total_sponsors": total_sponsors,
@@ -369,6 +401,7 @@ def get_finance_dashboard(db: Session) -> dict:
         "annual_revenue": float(annual_revenue),
         "payments_this_month": payments_this_month,
         "overdue_sponsors": overdue_list,
+        "recent_payments": recent_payment_list,
     }
 
 

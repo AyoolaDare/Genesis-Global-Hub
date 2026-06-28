@@ -87,10 +87,10 @@ class Team(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    department_id: Mapped[uuid.UUID] = mapped_column(
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("departments.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     leader_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -109,7 +109,7 @@ class Team(Base):
         UniqueConstraint("name", "department_id", name="uq_teams_name_dept"),
     )
 
-    department: Mapped["Department"] = relationship("Department", back_populates="teams")
+    department: Mapped[Optional["Department"]] = relationship("Department", back_populates="teams")
     groups: Mapped[list["Group"]] = relationship(
         "Group",
         back_populates="team",
@@ -135,10 +135,10 @@ class Group(Base):
         ForeignKey("teams.id", ondelete="SET NULL"),
         nullable=True,
     )
-    department_id: Mapped[uuid.UUID] = mapped_column(
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("departments.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     leader_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -153,7 +153,7 @@ class Group(Base):
     )
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    department: Mapped["Department"] = relationship("Department", back_populates="groups")
+    department: Mapped[Optional["Department"]] = relationship("Department", back_populates="groups")
     team: Mapped[Optional["Team"]] = relationship("Team", back_populates="groups")
 
     def __repr__(self) -> str:

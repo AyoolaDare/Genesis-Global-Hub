@@ -280,7 +280,7 @@ CREATE TRIGGER trg_departments_updated_at
 CREATE TABLE IF NOT EXISTS teams (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            TEXT NOT NULL,
-  department_id   UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  department_id   UUID REFERENCES departments(id) ON DELETE CASCADE,
   leader_user_id  UUID REFERENCES app_users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -300,7 +300,7 @@ CREATE TABLE IF NOT EXISTS groups (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            TEXT NOT NULL,
   team_id         UUID REFERENCES teams(id) ON DELETE SET NULL,   -- nullable
-  department_id   UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  department_id   UUID REFERENCES departments(id) ON DELETE CASCADE,
   leader_user_id  UUID REFERENCES app_users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
