@@ -28,13 +28,15 @@ class Sponsor {
   factory Sponsor.fromJson(Map<String, dynamic> json) {
     return Sponsor(
       id: json['id'] ?? '',
-      name: json['name'] ?? '',
+      name: json['full_name'] ?? json['name'] ?? '',
       email: json['email'],
       phone: json['phone'],
       address: json['address'],
-      category: json['category'],
-      totalContributions:
-          (json['total_contributions'] ?? 0.0).toDouble(),
+      category: json['sponsorship_tier']?.toString() ?? json['category'],
+      totalContributions: (json['total_contributions'] ??
+              json['amount'] ??
+              0.0)
+          .toDouble(),
       createdAt: DateTime.parse(
           json['created_at'] ?? DateTime.now().toIso8601String()),
       payments: json['payments'] != null
@@ -76,8 +78,8 @@ class Payment {
       paymentDate: DateTime.parse(
           json['payment_date'] ?? DateTime.now().toIso8601String()),
       purpose: json['purpose'],
-      reference: json['reference'],
-      method: json['method'] ?? 'CASH',
+      reference: json['reference'] ?? json['tx_ref'],
+      method: json['method'] ?? json['payment_method'] ?? 'CASH',
     );
   }
 }

@@ -6,7 +6,7 @@ CRITICAL:
   - Only FINANCE_ADMIN/SUPER_ADMIN can access this domain
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Optional
 
 from sqlalchemy import func, or_, extract
@@ -163,6 +163,46 @@ def list_payments(
         SponsorPayment.sponsor_id == sponsor_id,
         SponsorPayment.deleted_at.is_(None),
     ).order_by(SponsorPayment.payment_date.desc())
+
+    total = query.count()
+    items = query.offset((page - 1) * per_page).limit(per_page).all()
+    return items, total
+
+
+def list_all_payments(
+    db: Session,
+    page: int = 1,
+    per_page: int = 20,
+    status: Optional[str] = None,
+    method: Optional[str] = None,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+) -> tuple[list[SponsorPayment], int]:
+    query = (
+        db.query(SponsorPayment)
+        .join(Sponsor, Sponsor.id == SponsorPayment.sponsor_id)
+        .filter(
+            SponsorPayment.deleted_at.is_(None),
+            Sponsor.deleted_at.is_(None),
+        )
+        .order_by(SponsorPayment.payment_date.desc().nullslast())
+    )
+
+    if status:
+        query = query.filter(SponsorPayment.status == status)
+
+    if method:
+        query = query.filter(SponsorPayment.payment_method == method)
+
+    if from_date:
+        query = query.filter(
+            SponsorPayment.payment_date >= datetime.combine(from_date, time.min)
+        )
+
+    if to_date:
+        query = query.filter(
+            SponsorPayment.payment_date <= datetime.combine(to_date, time.max)
+        )
 
     total = query.count()
     items = query.offset((page - 1) * per_page).limit(per_page).all()

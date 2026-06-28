@@ -35,7 +35,7 @@ Map<UserRole, List<SidebarItem>> _sidebarConfig = {
     const SidebarItem(label: 'Departments', icon: Icons.business_outlined, route: '/admin/departments'),
     const SidebarItem(label: 'KPI Config', icon: Icons.track_changes_outlined, route: '/admin/kpi'),
     const SidebarItem(label: 'Audit Logs', icon: Icons.history_outlined, route: '/admin/audit'),
-    const SidebarItem(label: 'Finance', icon: Icons.account_balance_outlined, route: '/finance'),
+    const SidebarItem(label: 'Sponsor', icon: Icons.volunteer_activism_outlined, route: '/finance'),
     const SidebarItem(label: 'HR', icon: Icons.badge_outlined, route: '/hr'),
     const SidebarItem(label: 'Medical', icon: Icons.local_hospital_outlined, route: '/medical'),
   ],

@@ -49,7 +49,7 @@ extension UserRoleExtension on UserRole {
       case UserRole.pastor:
         return 'Pastor';
       case UserRole.financeAdmin:
-        return 'Finance Admin';
+        return 'Sponsor Admin';
       case UserRole.hrAdmin:
         return 'HR Admin';
       case UserRole.departmentHead:

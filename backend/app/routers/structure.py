@@ -4,12 +4,14 @@ Genesis Global CMS — Structure Router (Departments / Teams / Groups)
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_role
 from app.auth.models import AppUser
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
+from app.models.structure import MemberAssignment, Team
 from app.schemas.structure import (
     AssignHeadRequest,
     AssignLeaderRequest,
@@ -60,6 +62,19 @@ async def list_departments_endpoint(
             "name": d.name,
             "description": d.description,
             "head_user_id": d.head_user_id,
+            "member_count": db.query(func.count(MemberAssignment.id))
+            .filter(
+                MemberAssignment.assignment_type == "DEPARTMENT",
+                MemberAssignment.assignment_id == d.id,
+                MemberAssignment.left_at.is_(None),
+                MemberAssignment.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0,
+            "team_count": db.query(func.count(Team.id))
+            .filter(Team.department_id == d.id, Team.deleted_at.is_(None))
+            .scalar()
+            or 0,
             "created_at": d.created_at,
             "updated_at": d.updated_at,
         }

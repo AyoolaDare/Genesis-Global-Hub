@@ -62,7 +62,7 @@ class FinanceDashboard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ShellLayout(
-      title: 'Finance Dashboard',
+      title: 'Sponsor Dashboard',
       actions: [
         ElevatedButton.icon(
           icon: const Icon(Icons.add, size: 18),
@@ -108,7 +108,7 @@ class FinanceDashboard extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Finance Overview',
+        Text('Sponsor Overview',
             style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 16),
         _buildStatsGrid(context, data),

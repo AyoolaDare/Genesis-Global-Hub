@@ -19,7 +19,7 @@ Endpoints:
   GET    /finance/report/annual          Annual report
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -36,6 +36,7 @@ from app.services.sponsor_service import (
     get_finance_dashboard,
     get_sponsor,
     initiate_flutterwave_payment,
+    list_all_payments,
     list_payments,
     list_sponsors,
     record_payment,
@@ -70,6 +71,7 @@ def _serialize_payment(payment) -> dict:
     return {
         "id": payment.id,
         "sponsor_id": payment.sponsor_id,
+        "sponsor_name": payment.sponsor.full_name if payment.sponsor else None,
         "amount": float(payment.amount),
         "payment_date": payment.payment_date,
         "payment_method": payment.payment_method,
@@ -160,6 +162,30 @@ async def list_payments_endpoint(
     db: Session = Depends(get_db),
 ):
     items, total = list_payments(sponsor_id, db, page, per_page)
+    data = [_serialize_payment(p) for p in items]
+    return paginated_response(data=data, total=total, page=page, per_page=per_page)
+
+
+@router.get("/payments", summary="List sponsor payments")
+async def list_all_payments_endpoint(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    method: Optional[str] = Query(None),
+    from_date: Optional[date] = Query(None, alias="from"),
+    to_date: Optional[date] = Query(None, alias="to"),
+    current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    items, total = list_all_payments(
+        db=db,
+        page=page,
+        per_page=per_page,
+        status=status,
+        method=method,
+        from_date=from_date,
+        to_date=to_date,
+    )
     data = [_serialize_payment(p) for p in items]
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 

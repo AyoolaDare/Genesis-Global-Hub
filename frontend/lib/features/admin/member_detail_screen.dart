@@ -8,6 +8,8 @@ import '../../core/widgets/error_state.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/auth/user_model.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/api_endpoints.dart';
 import '../../providers/members_provider.dart';
 
 class MemberDetailScreen extends ConsumerWidget {
@@ -215,6 +217,17 @@ class _MemberHeader extends StatelessWidget {
                       ),
                     ],
                   ),
+                if (role == UserRole.superAdmin || role == UserRole.pastor) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => _EditMemberDialog(member: member),
+                    ),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit Member'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -310,6 +323,265 @@ class _MemberHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _EditMemberDialog extends ConsumerStatefulWidget {
+  final Member member;
+
+  const _EditMemberDialog({required this.member});
+
+  @override
+  ConsumerState<_EditMemberDialog> createState() => _EditMemberDialogState();
+}
+
+class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _firstNameController;
+  late final TextEditingController _lastNameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _landmarkController;
+  late final TextEditingController _stateController;
+  String? _gender;
+  String? _maritalStatus;
+  int? _birthMonth;
+  int? _birthDay;
+  bool _isSaving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _firstNameController = TextEditingController(text: widget.member.firstName);
+    _lastNameController = TextEditingController(text: widget.member.lastName);
+    _phoneController = TextEditingController(text: widget.member.phone ?? '');
+    _emailController = TextEditingController(text: widget.member.email ?? '');
+    final addressParts = (widget.member.address ?? '').split(',');
+    _landmarkController =
+        TextEditingController(text: addressParts.isNotEmpty ? addressParts.first.trim() : '');
+    _stateController = TextEditingController(
+        text: addressParts.length > 1 ? addressParts.sublist(1).join(',').trim() : '');
+    _gender = _displayEnum(widget.member.gender);
+    _maritalStatus = _displayEnum(widget.member.maritalStatus);
+    _birthMonth = widget.member.dateOfBirth?.month;
+    _birthDay = widget.member.dateOfBirth?.day;
+  }
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _landmarkController.dispose();
+    _stateController.dispose();
+    super.dispose();
+  }
+
+  String? _displayEnum(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final lower = value.toLowerCase();
+    return lower[0].toUpperCase() + lower.substring(1);
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+
+    try {
+      final address = [
+        _landmarkController.text.trim(),
+        _stateController.text.trim(),
+      ].where((part) => part.isNotEmpty).join(', ');
+      final dateOfBirth = _birthMonth != null && _birthDay != null
+          ? '1900-${_birthMonth!.toString().padLeft(2, '0')}-${_birthDay!.toString().padLeft(2, '0')}'
+          : null;
+
+      final dio = ref.read(dioProvider);
+      await dio.put(
+        ApiEndpoints.memberById(widget.member.id),
+        data: {
+          'full_name':
+              '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim(),
+          if (_phoneController.text.trim().isNotEmpty)
+            'phone': _phoneController.text.trim(),
+          if (_emailController.text.trim().isNotEmpty)
+            'email': _emailController.text.trim(),
+          if (_gender != null) 'gender': _gender!.toUpperCase(),
+          if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+          if (address.isNotEmpty) 'address': address,
+          if (_maritalStatus != null)
+            'marital_status': _maritalStatus!.toUpperCase(),
+        },
+      );
+      ref.invalidate(memberDetailProvider(widget.member.id));
+      ref.invalidate(membersProvider);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = ApiException.from(e)?.message ?? 'Failed to update member.';
+        _isSaving = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Member'),
+      content: SizedBox(
+        width: 560,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_error != null) ...[
+                  Text(_error!, style: const TextStyle(color: AppColors.error)),
+                  const SizedBox(height: 12),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _firstNameController,
+                        decoration: const InputDecoration(labelText: 'First Name *'),
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? 'Required' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _lastNameController,
+                        decoration: const InputDecoration(labelText: 'Last Name *'),
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? 'Required' : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Phone'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _gender,
+                        decoration: const InputDecoration(labelText: 'Gender'),
+                        items: ['Male', 'Female']
+                            .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                            .toList(),
+                        onChanged: (v) => setState(() => _gender = v),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _maritalStatus,
+                        decoration: const InputDecoration(labelText: 'Marital Status'),
+                        items: ['Single', 'Married', 'Divorced', 'Widowed']
+                            .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                            .toList(),
+                        onChanged: (v) => setState(() => _maritalStatus = v),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: _birthMonth,
+                        decoration: const InputDecoration(labelText: 'Birth Month'),
+                        items: List.generate(
+                          12,
+                          (i) => DropdownMenuItem(
+                            value: i + 1,
+                            child: Text(DateFormat.MMMM().format(DateTime(1900, i + 1))),
+                          ),
+                        ),
+                        onChanged: (v) => setState(() => _birthMonth = v),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: _birthDay,
+                        decoration: const InputDecoration(labelText: 'Birth Day'),
+                        items: List.generate(
+                          31,
+                          (i) => DropdownMenuItem(
+                            value: i + 1,
+                            child: Text('${i + 1}'),
+                          ),
+                        ),
+                        onChanged: (v) => setState(() => _birthDay = v),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _landmarkController,
+                        decoration: const InputDecoration(labelText: 'Landmark'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _stateController,
+                        decoration: const InputDecoration(labelText: 'State'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isSaving ? null : _save,
+          child: _isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.white,
+                  ),
+                )
+              : const Text('Save Changes'),
+        ),
+      ],
     );
   }
 }

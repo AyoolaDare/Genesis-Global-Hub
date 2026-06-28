@@ -28,7 +28,7 @@ final paymentsListProvider =
       if (params['method'] != null) 'method': params['method'],
     },
   );
-  return PaymentsList.fromJson(response.data['data']);
+  return PaymentsList.fromJson(response.data);
 });
 
 // ---------------------------------------------------------------------------

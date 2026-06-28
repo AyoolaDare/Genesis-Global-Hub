@@ -15,8 +15,10 @@ class DepartmentsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final deptAsync = ref.watch(departmentsProvider);
+    final teamsAsync = ref.watch(teamsProvider);
+    final groupsAsync = ref.watch(groupsProvider);
     return ShellLayout(
-      title: 'Departments',
+      title: 'Church Structure',
       actions: [
         ElevatedButton.icon(
           onPressed: () => _showCreateDialog(context, ref),
@@ -25,47 +27,51 @@ class DepartmentsScreen extends ConsumerWidget {
         ),
         const SizedBox(width: 16),
       ],
-      child: deptAsync.when(
-        loading: () => GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.5,
-          ),
-          itemCount: 6,
-          itemBuilder: (_, __) => const DashboardStatSkeleton(),
-        ),
-        error: (e, _) => ErrorState(
-          message: 'Failed to load departments',
-          onRetry: () => ref.invalidate(departmentsProvider),
-        ),
-        data: (departments) {
-          if (departments.isEmpty) {
-            return EmptyState(
-              icon: Icons.business_outlined,
-              title: 'No departments yet',
-              subtitle: 'Create a department to get started',
-              actionLabel: 'New Department',
-              onAction: () => _showCreateDialog(context, ref),
-            );
-          }
-          final screenWidth = MediaQuery.of(context).size.width;
-          final crossAxisCount =
-              screenWidth > 1200 ? 3 : screenWidth > 800 ? 2 : 1;
-          return GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.6,
+      child: DefaultTabController(
+        length: 3,
+        child: Column(
+          children: [
+            Container(
+              color: AppColors.white,
+              child: const TabBar(
+                tabs: [
+                  Tab(text: 'Departments'),
+                  Tab(text: 'Teams'),
+                  Tab(text: 'Groups'),
+                ],
+              ),
             ),
-            itemCount: departments.length,
-            itemBuilder: (_, i) => _DepartmentCard(department: departments[i]),
-          );
-        },
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _DepartmentsGrid(
+                    deptAsync: deptAsync,
+                    onCreate: () => _showCreateDialog(context, ref),
+                  ),
+                  _StructureList<Team>(
+                    asyncValue: teamsAsync,
+                    emptyIcon: Icons.groups_outlined,
+                    emptyTitle: 'No teams yet',
+                    itemIcon: Icons.groups_outlined,
+                    titleOf: (team) => team.name,
+                    subtitleOf: (team) => 'Department ID: ${team.departmentId}',
+                    trailingOf: (team) => '${team.memberCount} members',
+                  ),
+                  _StructureList<Group>(
+                    asyncValue: groupsAsync,
+                    emptyIcon: Icons.diversity_3_outlined,
+                    emptyTitle: 'No groups yet',
+                    itemIcon: Icons.diversity_3_outlined,
+                    titleOf: (group) => group.name,
+                    subtitleOf: (group) =>
+                        group.teamId != null ? 'Team ID: ${group.teamId}' : 'Department ID: ${group.departmentId ?? 'N/A'}',
+                    trailingOf: (group) => '${group.memberCount} members',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -76,6 +82,116 @@ class DepartmentsScreen extends ConsumerWidget {
       builder: (_) => _CreateDepartmentDialog(
         onCreated: () => ref.invalidate(departmentsProvider),
       ),
+    );
+  }
+}
+
+class _DepartmentsGrid extends StatelessWidget {
+  final AsyncValue<List<Department>> deptAsync;
+  final VoidCallback onCreate;
+
+  const _DepartmentsGrid({
+    required this.deptAsync,
+    required this.onCreate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return deptAsync.when(
+      loading: () => GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 1.5,
+        ),
+        itemCount: 6,
+        itemBuilder: (_, __) => const DashboardStatSkeleton(),
+      ),
+      error: (e, _) => const ErrorState(
+        message: 'Failed to load departments',
+      ),
+      data: (departments) {
+        if (departments.isEmpty) {
+          return EmptyState(
+            icon: Icons.business_outlined,
+            title: 'No departments yet',
+            subtitle: 'Create a department to get started',
+            actionLabel: 'New Department',
+            onAction: onCreate,
+          );
+        }
+        final screenWidth = MediaQuery.of(context).size.width;
+        final crossAxisCount =
+            screenWidth > 1200 ? 3 : screenWidth > 800 ? 2 : 1;
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 1.6,
+          ),
+          itemCount: departments.length,
+          itemBuilder: (_, i) => _DepartmentCard(department: departments[i]),
+        );
+      },
+    );
+  }
+}
+
+class _StructureList<T> extends StatelessWidget {
+  final AsyncValue<List<T>> asyncValue;
+  final IconData emptyIcon;
+  final String emptyTitle;
+  final IconData itemIcon;
+  final String Function(T item) titleOf;
+  final String Function(T item) subtitleOf;
+  final String Function(T item) trailingOf;
+
+  const _StructureList({
+    required this.asyncValue,
+    required this.emptyIcon,
+    required this.emptyTitle,
+    required this.itemIcon,
+    required this.titleOf,
+    required this.subtitleOf,
+    required this.trailingOf,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return asyncValue.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => ErrorState(message: 'Failed to load $emptyTitle'),
+      data: (items) {
+        if (items.isEmpty) {
+          return EmptyState(
+            icon: emptyIcon,
+            title: emptyTitle,
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (_, i) {
+            final item = items[i];
+            return Card(
+              child: ListTile(
+                leading: Icon(itemIcon, color: AppColors.primary),
+                title: Text(titleOf(item)),
+                subtitle: Text(subtitleOf(item)),
+                trailing: Text(
+                  trailingOf(item),
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

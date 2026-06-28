@@ -13,6 +13,36 @@ import 'features/admin/member_create_screen.dart';
 import 'features/admin/pending_approvals_screen.dart';
 import 'features/admin/departments_screen.dart';
 import 'features/admin/kpi_config_screen.dart';
+import 'features/admin/audit_logs_screen.dart';
+import 'features/department_head/dept_dashboard.dart';
+import 'features/department_head/dept_members_screen.dart';
+import 'features/department_head/dept_kpi_screen.dart';
+import 'features/team_leader/team_dashboard.dart';
+import 'features/team_leader/team_members_screen.dart';
+import 'features/team_leader/team_tasks_screen.dart';
+import 'features/group_leader/group_dashboard.dart';
+import 'features/group_leader/group_members_screen.dart';
+import 'features/group_leader/attendance_screen.dart';
+import 'features/follow_up/followup_dashboard.dart';
+import 'features/follow_up/tasks_list_screen.dart';
+import 'features/follow_up/task_detail_screen.dart';
+import 'features/follow_up/new_convert_screen.dart';
+import 'features/follow_up/member_search_screen.dart';
+import 'features/medical/medical_dashboard.dart';
+import 'features/medical/patients_list_screen.dart';
+import 'features/medical/new_patient_screen.dart';
+import 'features/medical/patient_detail_screen.dart';
+import 'features/medical/visit_form_screen.dart';
+import 'features/finance/finance_dashboard.dart';
+import 'features/finance/sponsors_list_screen.dart';
+import 'features/finance/sponsor_detail_screen.dart';
+import 'features/finance/payments_screen.dart';
+import 'features/hr/hr_dashboard.dart';
+import 'features/hr/workers_list_screen.dart';
+import 'features/hr/worker_detail_screen.dart';
+import 'features/hr/performance_screen.dart';
+import 'features/member_self/member_profile_screen.dart';
+import 'features/member_self/member_groups_screen.dart';
 
 // ---------------------------------------------------------------------------
 // Router provider
@@ -61,13 +91,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc.startsWith('/follow-up') && role != UserRole.followUp) {
         return role.dashboardRoute;
       }
-      if (loc.startsWith('/medical') && role != UserRole.medical) {
+      if (loc.startsWith('/medical') &&
+          role != UserRole.superAdmin &&
+          role != UserRole.medical) {
         return role.dashboardRoute;
       }
-      if (loc.startsWith('/finance') && role != UserRole.financeAdmin) {
+      if (loc.startsWith('/finance') &&
+          role != UserRole.superAdmin &&
+          role != UserRole.financeAdmin) {
         return role.dashboardRoute;
       }
-      if (loc.startsWith('/hr') && role != UserRole.hrAdmin) {
+      if (loc.startsWith('/hr') &&
+          role != UserRole.superAdmin &&
+          role != UserRole.hrAdmin) {
         return role.dashboardRoute;
       }
 
@@ -349,168 +385,4 @@ class GenesisGlobalApp extends ConsumerWidget {
       },
     );
   }
-}
-
-class _ModulePlaceholderScreen extends StatelessWidget {
-  final String title;
-
-  const _ModulePlaceholderScreen({super.key, required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.construction_outlined, size: 48),
-                const SizedBox(height: 16),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.headlineSmall,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'This module route is wired and ready for implementation.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class AuditLogsScreen extends _ModulePlaceholderScreen {
-  const AuditLogsScreen({super.key}) : super(title: 'Audit Logs');
-}
-
-class DeptDashboard extends _ModulePlaceholderScreen {
-  const DeptDashboard({super.key}) : super(title: 'Department Dashboard');
-}
-
-class DeptMembersScreen extends _ModulePlaceholderScreen {
-  const DeptMembersScreen({super.key}) : super(title: 'Department Members');
-}
-
-class DeptKpiScreen extends _ModulePlaceholderScreen {
-  const DeptKpiScreen({super.key}) : super(title: 'Department KPIs');
-}
-
-class TeamDashboard extends _ModulePlaceholderScreen {
-  const TeamDashboard({super.key}) : super(title: 'Team Dashboard');
-}
-
-class TeamMembersScreen extends _ModulePlaceholderScreen {
-  const TeamMembersScreen({super.key}) : super(title: 'Team Members');
-}
-
-class TeamTasksScreen extends _ModulePlaceholderScreen {
-  const TeamTasksScreen({super.key}) : super(title: 'Team Tasks');
-}
-
-class GroupDashboard extends _ModulePlaceholderScreen {
-  const GroupDashboard({super.key}) : super(title: 'Group Dashboard');
-}
-
-class GroupMembersScreen extends _ModulePlaceholderScreen {
-  const GroupMembersScreen({super.key}) : super(title: 'Group Members');
-}
-
-class AttendanceScreen extends _ModulePlaceholderScreen {
-  const AttendanceScreen({super.key}) : super(title: 'Attendance');
-}
-
-class FollowupDashboard extends _ModulePlaceholderScreen {
-  const FollowupDashboard({super.key}) : super(title: 'Follow-up Dashboard');
-}
-
-class TasksListScreen extends _ModulePlaceholderScreen {
-  const TasksListScreen({super.key}) : super(title: 'Follow-up Tasks');
-}
-
-class TaskDetailScreen extends _ModulePlaceholderScreen {
-  TaskDetailScreen({super.key, required String taskId})
-      : super(title: 'Follow-up Task');
-}
-
-class NewConvertScreen extends _ModulePlaceholderScreen {
-  const NewConvertScreen({super.key}) : super(title: 'New Convert');
-}
-
-class MemberSearchScreen extends _ModulePlaceholderScreen {
-  const MemberSearchScreen({super.key}) : super(title: 'Member Search');
-}
-
-class MedicalDashboard extends _ModulePlaceholderScreen {
-  const MedicalDashboard({super.key}) : super(title: 'Medical Dashboard');
-}
-
-class PatientsListScreen extends _ModulePlaceholderScreen {
-  const PatientsListScreen({super.key}) : super(title: 'Patients');
-}
-
-class NewPatientScreen extends _ModulePlaceholderScreen {
-  const NewPatientScreen({super.key}) : super(title: 'New Patient');
-}
-
-class PatientDetailScreen extends _ModulePlaceholderScreen {
-  PatientDetailScreen({super.key, required String patientId})
-      : super(title: 'Patient Detail');
-}
-
-class VisitFormScreen extends _ModulePlaceholderScreen {
-  VisitFormScreen({super.key, required String patientId})
-      : super(title: 'Medical Visit');
-}
-
-class FinanceDashboard extends _ModulePlaceholderScreen {
-  const FinanceDashboard({super.key}) : super(title: 'Finance Dashboard');
-}
-
-class SponsorsListScreen extends _ModulePlaceholderScreen {
-  const SponsorsListScreen({super.key}) : super(title: 'Sponsors');
-}
-
-class SponsorDetailScreen extends _ModulePlaceholderScreen {
-  SponsorDetailScreen({super.key, required String sponsorId})
-      : super(title: 'Sponsor Detail');
-}
-
-class PaymentsScreen extends _ModulePlaceholderScreen {
-  const PaymentsScreen({super.key}) : super(title: 'Payments');
-}
-
-class HrDashboard extends _ModulePlaceholderScreen {
-  const HrDashboard({super.key}) : super(title: 'HR Dashboard');
-}
-
-class WorkersListScreen extends _ModulePlaceholderScreen {
-  const WorkersListScreen({super.key}) : super(title: 'Workers');
-}
-
-class WorkerDetailScreen extends _ModulePlaceholderScreen {
-  WorkerDetailScreen({super.key, required String workerId})
-      : super(title: 'Worker Detail');
-}
-
-class PerformanceScreen extends _ModulePlaceholderScreen {
-  const PerformanceScreen({super.key}) : super(title: 'Performance');
-}
-
-class MemberProfileScreen extends _ModulePlaceholderScreen {
-  const MemberProfileScreen({super.key}) : super(title: 'My Profile');
-}
-
-class MemberGroupsScreen extends _ModulePlaceholderScreen {
-  const MemberGroupsScreen({super.key}) : super(title: 'My Groups');
 }

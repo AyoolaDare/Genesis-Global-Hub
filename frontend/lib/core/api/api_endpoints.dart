@@ -63,11 +63,11 @@ class ApiEndpoints {
   static String visitById(String patientId, String visitId) =>
       '/medical/patients/$patientId/visits/$visitId';
 
-  // Finance
-  static const String sponsors = '/finance/sponsors';
-  static String sponsorById(String id) => '/finance/sponsors/$id';
-  static const String payments = '/finance/payments';
-  static String paymentById(String id) => '/finance/payments/$id';
+  // Sponsors / Finance
+  static const String sponsors = '/sponsors';
+  static String sponsorById(String id) => '/sponsors/$id';
+  static const String payments = '/payments';
+  static String paymentById(String id) => '/payments/$id';
   static const String financeReports = '/finance/reports';
 
   // HR
@@ -91,9 +91,9 @@ class ApiEndpoints {
   static const String teamDashboard = '/dashboard/team';
   static const String groupDashboard = '/dashboard/group';
   static const String followUpDashboard = '/dashboard/follow-up';
-  static const String medicalDashboard = '/dashboard/medical';
-  static const String financeDashboard = '/dashboard/finance';
-  static const String hrDashboard = '/dashboard/hr';
+  static const String medicalDashboard = '/medical/dashboard';
+  static const String financeDashboard = '/finance/dashboard';
+  static const String hrDashboard = '/hr/dashboard';
 
   // Profile
   static const String myProfile = '/profile/me';
