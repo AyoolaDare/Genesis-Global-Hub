@@ -40,10 +40,14 @@ class Patient {
   String get fullName => '$firstName $lastName';
 
   factory Patient.fromJson(Map<String, dynamic> json) {
+    final fullName = (json['full_name'] ?? '').toString().trim();
+    final splitAt = fullName.indexOf(' ');
     return Patient(
       id: json['id'] ?? '',
-      firstName: json['first_name'] ?? '',
-      lastName: json['last_name'] ?? '',
+      firstName: json['first_name'] ??
+          (splitAt >= 0 ? fullName.substring(0, splitAt) : fullName),
+      lastName: json['last_name'] ??
+          (splitAt >= 0 ? fullName.substring(splitAt + 1) : ''),
       phone: json['phone'],
       address: json['address'],
       gender: json['gender'],
@@ -133,8 +137,10 @@ class PatientCreate {
   final DateTime? dateOfBirth;
   final String? bloodGroup;
   final String? allergies;
+  final String? chronicConditions;
   final bool isChurchMember;
   final String? memberId;
+  final bool consentGiven;
 
   const PatientCreate({
     required this.firstName,
@@ -145,20 +151,21 @@ class PatientCreate {
     this.dateOfBirth,
     this.bloodGroup,
     this.allergies,
+    this.chronicConditions,
     this.isChurchMember = false,
     this.memberId,
+    this.consentGiven = false,
   });
 
   Map<String, dynamic> toJson() => {
-        'first_name': firstName,
-        'last_name': lastName,
+        'full_name': '$firstName $lastName'.trim(),
         'phone': phone,
-        'address': address,
         'gender': gender,
-        'date_of_birth': dateOfBirth?.toIso8601String(),
-        'blood_group': bloodGroup,
+        'date_of_birth': dateOfBirth?.toIso8601String().split('T').first,
         'allergies': allergies,
-        'is_church_member': isChurchMember,
+        'chronic_conditions': chronicConditions,
+        'consent_given': consentGiven,
+        if (consentGiven) 'consent_date': DateTime.now().toIso8601String(),
         'member_id': memberId,
       };
 }

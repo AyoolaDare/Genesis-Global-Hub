@@ -145,6 +145,32 @@ async def search_members_endpoint(
     return paginated_response(data=data, total=total, page=body.page, per_page=body.per_page)
 
 
+@router.get("/lookup", summary="Basic member lookup for linking records")
+async def lookup_members_endpoint(
+    search: str = Query(..., min_length=2, max_length=100),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=50),
+    current_user: AppUser = Depends(
+        require_role("SUPER_ADMIN", "PASTOR", "HR_ADMIN", "MEDICAL", "FINANCE_ADMIN")
+    ),
+    db: Session = Depends(get_db),
+):
+    members, total = search_members(search, db, page, per_page)
+    data = [
+        {
+            "id": m.id,
+            "full_name": m.full_name,
+            "phone": m.phone,
+            "email": m.email,
+            "gender": m.gender,
+            "date_of_birth": m.date_of_birth,
+            "address": m.address,
+        }
+        for m in members
+    ]
+    return paginated_response(data=data, total=total, page=page, per_page=per_page)
+
+
 # ── Create Member ──────────────────────────────────────────────────────────────
 
 @router.post("", summary="Create a new member", status_code=201)

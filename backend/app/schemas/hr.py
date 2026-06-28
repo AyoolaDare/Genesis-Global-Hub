@@ -22,6 +22,7 @@ class BaseSchema(BaseModel):
 # ── Worker Schemas ─────────────────────────────────────────────────────────────
 
 class WorkerCreate(BaseSchema):
+    member_id: Optional[uuid.UUID] = None
     full_name: str = Field(..., min_length=2, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[EmailStr] = None
@@ -160,5 +161,6 @@ class HRDashboardResponse(BaseSchema):
     total_workers: int
     active_workers: int
     volunteers: int
-    pending_leave_requests: int
-    by_department: list[DeptWorkerCount] = []
+    pending_leave: int
+    dept_breakdown: list[DeptWorkerCount] = []
+    pending_leave_requests: list[dict] = []

@@ -342,12 +342,17 @@ class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
   late final TextEditingController _lastNameController;
   late final TextEditingController _phoneController;
   late final TextEditingController _emailController;
+  late final TextEditingController _photoUrlController;
   late final TextEditingController _landmarkController;
   late final TextEditingController _stateController;
+  late String _membershipStatus;
   String? _gender;
   String? _maritalStatus;
   int? _birthMonth;
   int? _birthDay;
+  DateTime? _salvationDate;
+  late bool _waterBaptismStatus;
+  late bool _holySpiritBaptismStatus;
   bool _isSaving = false;
   String? _error;
 
@@ -358,15 +363,21 @@ class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
     _lastNameController = TextEditingController(text: widget.member.lastName);
     _phoneController = TextEditingController(text: widget.member.phone ?? '');
     _emailController = TextEditingController(text: widget.member.email ?? '');
+    _photoUrlController =
+        TextEditingController(text: widget.member.photoUrl ?? '');
     final addressParts = (widget.member.address ?? '').split(',');
     _landmarkController =
         TextEditingController(text: addressParts.isNotEmpty ? addressParts.first.trim() : '');
     _stateController = TextEditingController(
         text: addressParts.length > 1 ? addressParts.sublist(1).join(',').trim() : '');
+    _membershipStatus = widget.member.status.value;
     _gender = _displayEnum(widget.member.gender);
     _maritalStatus = _displayEnum(widget.member.maritalStatus);
     _birthMonth = widget.member.dateOfBirth?.month;
     _birthDay = widget.member.dateOfBirth?.day;
+    _salvationDate = widget.member.salvationDate;
+    _waterBaptismStatus = widget.member.waterBaptismStatus;
+    _holySpiritBaptismStatus = widget.member.holySpiritBaptismStatus;
   }
 
   @override
@@ -375,6 +386,7 @@ class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
     _lastNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
+    _photoUrlController.dispose();
     _landmarkController.dispose();
     _stateController.dispose();
     super.dispose();
@@ -417,6 +429,13 @@ class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
           if (address.isNotEmpty) 'address': address,
           if (_maritalStatus != null)
             'marital_status': _maritalStatus!.toUpperCase(),
+          'membership_status': _membershipStatus,
+          if (_salvationDate != null)
+            'salvation_date': _salvationDate!.toIso8601String().split('T').first,
+          'water_baptism_status': _waterBaptismStatus,
+          'holy_spirit_baptism_status': _holySpiritBaptismStatus,
+          if (_photoUrlController.text.trim().isNotEmpty)
+            'photo_url': _photoUrlController.text.trim(),
         },
       );
       ref.invalidate(memberDetailProvider(widget.member.id));
@@ -481,6 +500,12 @@ class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
                   decoration: const InputDecoration(labelText: 'Email'),
                 ),
                 const SizedBox(height: 12),
+                TextFormField(
+                  controller: _photoUrlController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(labelText: 'Photo URL'),
+                ),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -507,6 +532,28 @@ class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _membershipStatus,
+                  decoration:
+                      const InputDecoration(labelText: 'Membership Status'),
+                  items: const [
+                    DropdownMenuItem(value: 'ACTIVE', child: Text('Active')),
+                    DropdownMenuItem(value: 'INACTIVE', child: Text('Inactive')),
+                    DropdownMenuItem(value: 'PENDING', child: Text('Pending')),
+                    DropdownMenuItem(value: 'REJECTED', child: Text('Rejected')),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _membershipStatus = v ?? 'ACTIVE'),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Spiritual Details',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
@@ -557,6 +604,42 @@ class _EditMemberDialogState extends ConsumerState<_EditMemberDialog> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Salvation Date'),
+                  subtitle: Text(
+                    _salvationDate == null
+                        ? 'Not set'
+                        : DateFormat('dd MMM yyyy').format(_salvationDate!),
+                  ),
+                  trailing: const Icon(Icons.calendar_today_outlined),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _salvationDate ?? DateTime.now(),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setState(() => _salvationDate = picked);
+                    }
+                  },
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _waterBaptismStatus,
+                  onChanged: (v) =>
+                      setState(() => _waterBaptismStatus = v ?? false),
+                  title: const Text('Water Baptism Completed'),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _holySpiritBaptismStatus,
+                  onChanged: (v) =>
+                      setState(() => _holySpiritBaptismStatus = v ?? false),
+                  title: const Text('Holy Spirit Baptism Completed'),
                 ),
               ],
             ),
@@ -702,19 +785,25 @@ class _SpiritualTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spiritual = member.spiritualData ?? {};
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: _SectionCard(
         title: 'Spiritual Profile',
         children: [
-          _InfoRow('Baptism Status', spiritual['baptism_status'] ?? 'N/A'),
-          _InfoRow('Baptism Date', spiritual['baptism_date'] ?? 'N/A'),
-          _InfoRow('Dedication Status',
-              spiritual['dedication_status'] ?? 'N/A'),
-          _InfoRow('Spiritual Level', spiritual['level'] ?? 'N/A'),
-          _InfoRow('Mentor', spiritual['mentor'] ?? 'N/A'),
-          _InfoRow('Small Group', spiritual['small_group'] ?? 'N/A'),
+          _InfoRow(
+            'Salvation Date',
+            member.salvationDate != null
+                ? DateFormat('dd MMM yyyy').format(member.salvationDate!)
+                : 'N/A',
+          ),
+          _InfoRow(
+            'Water Baptism',
+            member.waterBaptismStatus ? 'Completed' : 'Not completed',
+          ),
+          _InfoRow(
+            'Holy Spirit Baptism',
+            member.holySpiritBaptismStatus ? 'Completed' : 'Not completed',
+          ),
         ],
       ),
     );

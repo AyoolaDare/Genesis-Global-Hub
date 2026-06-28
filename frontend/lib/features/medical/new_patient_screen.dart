@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/sidebar.dart';
 import '../../providers/medical_provider.dart';
+import '../../providers/members_provider.dart';
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -25,10 +26,12 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
   final _addressController = TextEditingController();
   final _allergiesController = TextEditingController();
   final _conditionsController = TextEditingController();
+  final _memberSearchController = TextEditingController();
 
   String? _gender;
   DateTime? _dateOfBirth;
   bool _isChurchMember = false;
+  MemberLookupResult? _selectedMember;
   bool _consentGiven = false;
   bool _isSubmitting = false;
 
@@ -40,6 +43,7 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
     _addressController.dispose();
     _allergiesController.dispose();
     _conditionsController.dispose();
+    _memberSearchController.dispose();
     super.dispose();
   }
 
@@ -118,14 +122,35 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
                     children: [
                       CheckboxListTile(
                         value: _isChurchMember,
-                        onChanged: (v) =>
-                            setState(() => _isChurchMember = v ?? false),
+                        onChanged: (v) => setState(() {
+                          _isChurchMember = v ?? false;
+                          if (!_isChurchMember) _selectedMember = null;
+                        }),
                         title: const Text('Patient is a church member'),
                         subtitle: const Text(
                             'Check if this patient attends Genesis Global Church'),
                         controlAffinity: ListTileControlAffinity.leading,
                         contentPadding: EdgeInsets.zero,
                       ),
+                      if (_isChurchMember) ...[
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _memberSearchController,
+                          decoration: const InputDecoration(
+                            labelText: 'Search Church Member',
+                            hintText: 'Type name or phone',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.search_outlined),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        const SizedBox(height: 8),
+                        _MemberLookupResults(
+                          query: _memberSearchController.text,
+                          selected: _selectedMember,
+                          onSelected: _applyMember,
+                        ),
+                      ],
                       const Divider(),
                       CheckboxListTile(
                         value: _consentGiven,
@@ -277,8 +302,6 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
             items: const [
               DropdownMenuItem(value: 'MALE', child: Text('Male')),
               DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
-              DropdownMenuItem(
-                  value: 'OTHER', child: Text('Other')),
             ],
             onChanged: (v) => setState(() => _gender = v),
           ),
@@ -334,6 +357,16 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
       return;
     }
 
+    if (_isChurchMember && _selectedMember == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select the church member to link.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
     try {
       final data = PatientCreate(
@@ -350,7 +383,12 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
         allergies: _allergiesController.text.trim().isNotEmpty
             ? _allergiesController.text.trim()
             : null,
+        chronicConditions: _conditionsController.text.trim().isNotEmpty
+            ? _conditionsController.text.trim()
+            : null,
         isChurchMember: _isChurchMember,
+        memberId: _selectedMember?.id,
+        consentGiven: _consentGiven,
       );
       await ref.read(medicalProvider.notifier).createPatient(data);
       if (mounted) {
@@ -378,4 +416,63 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
 
   String _formatDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  void _applyMember(MemberLookupResult member) {
+    final nameParts = member.fullName.split(' ');
+    setState(() {
+      _selectedMember = member;
+      _firstNameController.text = nameParts.isNotEmpty ? nameParts.first : '';
+      _lastNameController.text =
+          nameParts.length > 1 ? nameParts.skip(1).join(' ') : '';
+      _phoneController.text = member.phone ?? '';
+      _addressController.text = member.address ?? '';
+      _gender = member.gender;
+      _dateOfBirth = member.dateOfBirth;
+    });
+  }
+}
+
+class _MemberLookupResults extends ConsumerWidget {
+  final String query;
+  final MemberLookupResult? selected;
+  final ValueChanged<MemberLookupResult> onSelected;
+
+  const _MemberLookupResults({
+    required this.query,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (query.trim().length < 2) {
+      return const Text(
+        'Enter at least 2 characters to search members.',
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+      );
+    }
+    final results = ref.watch(memberLookupProvider(query));
+    return results.when(
+      loading: () => const LinearProgressIndicator(),
+      error: (e, _) => Text(
+        'Could not search members: $e',
+        style: const TextStyle(color: AppColors.error, fontSize: 12),
+      ),
+      data: (members) => Column(
+        children: members
+            .take(5)
+            .map(
+              (m) => RadioListTile<String>(
+                value: m.id,
+                groupValue: selected?.id,
+                onChanged: (_) => onSelected(m),
+                title: Text(m.fullName),
+                subtitle: Text(m.phone ?? 'No phone'),
+                dense: true,
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
 }

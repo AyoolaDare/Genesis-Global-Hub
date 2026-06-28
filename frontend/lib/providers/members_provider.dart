@@ -62,6 +62,9 @@ class Member {
   final DateTime? dateOfBirth;
   final String? occupation;
   final String? maritalStatus;
+  final DateTime? salvationDate;
+  final bool waterBaptismStatus;
+  final bool holySpiritBaptismStatus;
 
   const Member({
     required this.id,
@@ -87,6 +90,9 @@ class Member {
     this.dateOfBirth,
     this.occupation,
     this.maritalStatus,
+    this.salvationDate,
+    this.waterBaptismStatus = false,
+    this.holySpiritBaptismStatus = false,
   });
 
   String get fullName => '$firstName $lastName';
@@ -131,6 +137,11 @@ class Member {
           : null,
       occupation: json['occupation'],
       maritalStatus: json['marital_status'],
+      salvationDate: json['salvation_date'] != null
+          ? DateTime.tryParse(json['salvation_date'])
+          : null,
+      waterBaptismStatus: json['water_baptism_status'] ?? false,
+      holySpiritBaptismStatus: json['holy_spirit_baptism_status'] ?? false,
     );
   }
 
@@ -156,6 +167,9 @@ class Member {
         'date_of_birth': dateOfBirth?.toIso8601String(),
         'occupation': occupation,
         'marital_status': maritalStatus,
+        'salvation_date': salvationDate?.toIso8601String(),
+        'water_baptism_status': waterBaptismStatus,
+        'holy_spirit_baptism_status': holySpiritBaptismStatus,
       };
 }
 
@@ -223,6 +237,52 @@ class MembersList {
         totalPages: 0,
       );
 }
+
+class MemberLookupResult {
+  final String id;
+  final String fullName;
+  final String? phone;
+  final String? email;
+  final String? gender;
+  final DateTime? dateOfBirth;
+  final String? address;
+
+  const MemberLookupResult({
+    required this.id,
+    required this.fullName,
+    this.phone,
+    this.email,
+    this.gender,
+    this.dateOfBirth,
+    this.address,
+  });
+
+  factory MemberLookupResult.fromJson(Map<String, dynamic> json) {
+    return MemberLookupResult(
+      id: json['id']?.toString() ?? '',
+      fullName: json['full_name'] ?? '',
+      phone: json['phone'],
+      email: json['email'],
+      gender: json['gender'],
+      dateOfBirth: json['date_of_birth'] != null
+          ? DateTime.tryParse(json['date_of_birth'])
+          : null,
+      address: json['address'],
+    );
+  }
+}
+
+final memberLookupProvider =
+    FutureProvider.family<List<MemberLookupResult>, String>((ref, query) async {
+  if (query.trim().length < 2) return [];
+  final dio = ref.read(dioProvider);
+  final response = await dio.get(
+    ApiEndpoints.memberLookup,
+    queryParameters: {'search': query.trim(), 'per_page': 20},
+  );
+  final data = response.data['data'] as List;
+  return data.map((e) => MemberLookupResult.fromJson(e)).toList();
+});
 
 // ---------------------------------------------------------------------------
 // Notifier

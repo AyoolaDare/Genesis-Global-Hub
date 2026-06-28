@@ -101,7 +101,16 @@ def create_worker(
     current_user: AppUser,
     db: Session,
 ) -> Worker:
-    member_link_id = _find_member_link(data.phone, db)
+    member_link_id = data.member_id
+    if member_link_id is not None:
+        member = db.query(MemberModel).filter(
+            MemberModel.id == member_link_id,
+            MemberModel.deleted_at.is_(None),
+        ).first()
+        if not member:
+            raise NotFound(message=f"Member {member_link_id} not found.")
+    if member_link_id is None:
+        member_link_id = _find_member_link(data.phone, db)
 
     worker = Worker(
         full_name=data.full_name,

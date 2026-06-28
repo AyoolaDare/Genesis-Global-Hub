@@ -20,6 +20,7 @@ class BaseSchema(BaseModel):
 # ── Patient Schemas ────────────────────────────────────────────────────────────
 
 class MedicalPatientCreate(BaseSchema):
+    member_id: Optional[uuid.UUID] = None
     full_name: str = Field(..., min_length=2, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
     gender: Optional[GenderEnum] = None

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/api_endpoints.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/sidebar.dart';
 import '../../core/widgets/skeleton_loader.dart';
@@ -8,6 +10,7 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/error_state.dart';
 import '../../core/widgets/pagination_footer.dart';
 import '../../providers/hr_provider.dart';
+import '../../providers/members_provider.dart';
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -61,6 +64,17 @@ class _WorkersListScreenState extends ConsumerState<WorkersListScreen> {
 
     return ShellLayout(
       title: 'Workers',
+      actions: [
+        ElevatedButton.icon(
+          onPressed: () => showDialog(
+            context: context,
+            builder: (_) => const _CreateWorkerDialog(),
+          ),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add Worker'),
+        ),
+        const SizedBox(width: 16),
+      ],
       child: Column(
         children: [
           _buildFilters(),
@@ -200,6 +214,206 @@ class _WorkersListScreenState extends ConsumerState<WorkersListScreen> {
           },
         ),
       ],
+    );
+  }
+}
+
+class _CreateWorkerDialog extends ConsumerStatefulWidget {
+  const _CreateWorkerDialog();
+
+  @override
+  ConsumerState<_CreateWorkerDialog> createState() => _CreateWorkerDialogState();
+}
+
+class _CreateWorkerDialogState extends ConsumerState<_CreateWorkerDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _memberSearchController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _roleController = TextEditingController();
+  String _employmentType = 'VOLUNTEER';
+  MemberLookupResult? _selectedMember;
+  bool _isSaving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _memberSearchController.dispose();
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _roleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.post(ApiEndpoints.workers, data: {
+        'member_id': _selectedMember?.id,
+        'full_name': _nameController.text.trim(),
+        if (_phoneController.text.trim().isNotEmpty)
+          'phone': _phoneController.text.trim(),
+        if (_emailController.text.trim().isNotEmpty)
+          'email': _emailController.text.trim(),
+        if (_roleController.text.trim().isNotEmpty)
+          'role_title': _roleController.text.trim(),
+        'employment_type': _employmentType,
+      });
+      ref.invalidate(hrProvider);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+        _error = ApiException.from(e)?.message ?? 'Failed to create worker.';
+      });
+    }
+  }
+
+  void _applyMember(MemberLookupResult member) {
+    setState(() {
+      _selectedMember = member;
+      _nameController.text = member.fullName;
+      _phoneController.text = member.phone ?? '';
+      _emailController.text = member.email ?? '';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add Worker'),
+      content: SizedBox(
+        width: 560,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_error != null) ...[
+                  Text(_error!, style: const TextStyle(color: AppColors.error)),
+                  const SizedBox(height: 12),
+                ],
+                TextFormField(
+                  controller: _memberSearchController,
+                  decoration: const InputDecoration(
+                    labelText: 'Pick Church Member',
+                    hintText: 'Search by name or phone',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.search_outlined),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+                _WorkerMemberLookup(
+                  query: _memberSearchController.text,
+                  selected: _selectedMember,
+                  onSelected: _applyMember,
+                ),
+                const Divider(height: 24),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: 'Full Name *'),
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Name is required' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _phoneController,
+                  decoration: const InputDecoration(labelText: 'Phone'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _roleController,
+                  decoration: const InputDecoration(labelText: 'Role / Duty'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _employmentType,
+                  decoration: const InputDecoration(labelText: 'Worker Type'),
+                  items: const [
+                    DropdownMenuItem(value: 'VOLUNTEER', child: Text('Volunteer')),
+                    DropdownMenuItem(value: 'PART_TIME', child: Text('Part Time')),
+                    DropdownMenuItem(value: 'FULL_TIME', child: Text('Full Time')),
+                    DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _employmentType = v ?? 'VOLUNTEER'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isSaving ? null : _save,
+          child: Text(_isSaving ? 'Saving...' : 'Create Worker'),
+        ),
+      ],
+    );
+  }
+}
+
+class _WorkerMemberLookup extends ConsumerWidget {
+  final String query;
+  final MemberLookupResult? selected;
+  final ValueChanged<MemberLookupResult> onSelected;
+
+  const _WorkerMemberLookup({
+    required this.query,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (query.trim().length < 2) {
+      return const Text(
+        'Search is optional. Leave blank to create a new worker profile.',
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+      );
+    }
+    final results = ref.watch(memberLookupProvider(query));
+    return results.when(
+      loading: () => const LinearProgressIndicator(),
+      error: (e, _) => Text(
+        'Could not search members: $e',
+        style: const TextStyle(color: AppColors.error, fontSize: 12),
+      ),
+      data: (members) => Column(
+        children: members
+            .take(5)
+            .map(
+              (m) => RadioListTile<String>(
+                value: m.id,
+                groupValue: selected?.id,
+                onChanged: (_) => onSelected(m),
+                title: Text(m.fullName),
+                subtitle: Text(m.phone ?? 'No phone'),
+                dense: true,
+              ),
+            )
+            .toList(),
+      ),
     );
   }
 }

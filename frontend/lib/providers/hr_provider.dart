@@ -32,15 +32,19 @@ class Worker {
   String get fullName => '$firstName $lastName';
 
   factory Worker.fromJson(Map<String, dynamic> json) {
+    final fullName = (json['full_name'] ?? '').toString().trim();
+    final splitAt = fullName.indexOf(' ');
     return Worker(
       id: json['id'] ?? '',
-      firstName: json['first_name'] ?? '',
-      lastName: json['last_name'] ?? '',
+      firstName: json['first_name'] ??
+          (splitAt >= 0 ? fullName.substring(0, splitAt) : fullName),
+      lastName: json['last_name'] ??
+          (splitAt >= 0 ? fullName.substring(splitAt + 1) : ''),
       email: json['email'],
       phone: json['phone'],
       photoUrl: json['photo_url'],
-      role: json['role'] ?? '',
-      department: json['department'],
+      role: json['role_title'] ?? json['role'] ?? '',
+      department: json['department_name'] ?? json['department'],
       employmentType: json['employment_type'] ?? 'FULL_TIME',
       startDate: json['start_date'] != null
           ? DateTime.tryParse(json['start_date'])

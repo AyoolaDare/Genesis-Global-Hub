@@ -30,11 +30,16 @@ class FinanceDashboardData {
   });
 
   factory FinanceDashboardData.fromJson(Map<String, dynamic> json) {
+    double amount(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    }
+
     return FinanceDashboardData(
       totalSponsors: json['total_sponsors'] ?? 0,
       activeSponsors: json['active_sponsors'] ?? 0,
-      monthlyRevenue: (json['monthly_revenue'] ?? 0.0).toDouble(),
-      annualRevenue: (json['annual_revenue'] ?? 0.0).toDouble(),
+      monthlyRevenue: amount(json['monthly_revenue']),
+      annualRevenue: amount(json['annual_revenue']),
       overdueSponsors: json['overdue_sponsors'] != null
           ? List<Map<String, dynamic>>.from(json['overdue_sponsors'])
           : [],
@@ -91,9 +96,10 @@ class FinanceDashboard extends ConsumerWidget {
                   ],
                 ),
                 error: (e, _) => ErrorState(
-                  message: e.toString().contains('403')
+                  message: ApiException.from(e)?.statusCode == 403
                       ? 'Access Denied'
                       : 'Failed to load dashboard',
+                  details: ApiException.from(e)?.message ?? e.toString(),
                   onRetry: () =>
                       ref.invalidate(financeDashboardProvider),
                 ),
@@ -394,7 +400,7 @@ class _RecentPaymentsSection extends StatelessWidget {
                           Padding(
                             padding: const EdgeInsets.all(8),
                             child: Text(
-                              '₦${(p['amount'] ?? 0).toStringAsFixed(0)}',
+                              '₦${((p['amount'] ?? 0) as num).toStringAsFixed(0)}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,

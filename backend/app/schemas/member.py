@@ -7,7 +7,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models.member import GenderEnum, MaritalStatusEnum
+from app.models.member import GenderEnum, MaritalStatusEnum, MemberStatusEnum
 
 
 # ── Base Config ────────────────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ class MemberUpdate(BaseSchema):
     salvation_date: Optional[date] = None
     water_baptism_status: Optional[bool] = None
     holy_spirit_baptism_status: Optional[bool] = None
+    membership_status: Optional[MemberStatusEnum] = None
     photo_url: Optional[str] = None
 
 

@@ -360,7 +360,7 @@ def get_finance_dashboard(db: Session) -> dict:
             "name": sponsor.full_name,
             "full_name": sponsor.full_name,
             "phone": sponsor.phone,
-            "tier": sponsor.sponsorship_tier.value,
+            "tier": getattr(sponsor.sponsorship_tier, "value", sponsor.sponsorship_tier),
             "sponsorship_tier": sponsor.sponsorship_tier,
             "amount": float(sponsor.amount),
             "days_overdue": days_overdue,
