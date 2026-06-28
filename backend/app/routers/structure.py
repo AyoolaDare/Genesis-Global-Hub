@@ -11,7 +11,7 @@ from app.auth.dependencies import get_current_user, require_role
 from app.auth.models import AppUser
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
-from app.models.structure import Department as DeptModel, Group as GroupModel, MemberAssignment, Team as TeamModel
+from app.models.structure import Department as DeptModel, MemberAssignment, Team as TeamModel
 from app.schemas.structure import (
     AssignHeadRequest,
     AssignLeaderRequest,
