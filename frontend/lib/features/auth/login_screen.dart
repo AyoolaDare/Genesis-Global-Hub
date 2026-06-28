@@ -37,14 +37,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _passwordController.text,
         );
     if (!mounted) return;
-    setState(() => _isLoading = false);
     if (!success) {
+      // Only stop loading on failure — on success GoRouter navigates away
       setState(() {
+        _isLoading = false;
         _errorMessage = ref.read(authProvider).error ??
             'Login failed. Please try again.';
       });
     }
-    // On success, GoRouter redirect handles navigation
+    // On success: leave _isLoading=true so button stays loading until navigation
   }
 
   @override

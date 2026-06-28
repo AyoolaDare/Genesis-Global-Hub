@@ -35,6 +35,11 @@ class MemberDetailScreen extends ConsumerWidget {
   }
 }
 
+String _formatMemberBirthday(DateTime date) {
+  if (date.year == 1900) return DateFormat('dd MMM').format(date);
+  return DateFormat('dd MMM yyyy').format(date);
+}
+
 class _MemberDetailContent extends StatelessWidget {
   final Member member;
   final UserRole role;
@@ -383,12 +388,12 @@ class _BasicInfoTab extends StatelessWidget {
               _InfoRow(
                 'Date of Birth',
                 member.dateOfBirth != null
-                    ? dateFormat.format(member.dateOfBirth!)
+                    ? _formatMemberBirthday(member.dateOfBirth!)
                     : 'N/A',
               ),
               _InfoRow('Marital Status', member.maritalStatus ?? 'N/A'),
               _InfoRow('Occupation', member.occupation ?? 'N/A'),
-              _InfoRow('Address', member.address ?? 'N/A'),
+              _InfoRow('Landmark / State', member.address ?? 'N/A'),
             ],
           ),
           const SizedBox(height: 16),

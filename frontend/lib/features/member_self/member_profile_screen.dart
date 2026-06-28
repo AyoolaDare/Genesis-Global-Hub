@@ -61,6 +61,11 @@ class MyProfile {
   }
 }
 
+String _formatProfileBirthday(DateTime date) {
+  if (date.year == 1900) return '${date.day}/${date.month}';
+  return '${date.day}/${date.month}/${date.year}';
+}
+
 final myProfileProvider = FutureProvider<MyProfile>((ref) async {
   final dio = ref.read(dioProvider);
   final response = await dio.get(ApiEndpoints.myProfile);
@@ -418,8 +423,7 @@ class _ReadOnlyFields extends StatelessWidget {
               if (profile.dateOfBirth != null)
                 _Field(
                   label: 'Date of Birth',
-                  value:
-                      '${profile.dateOfBirth!.day}/${profile.dateOfBirth!.month}/${profile.dateOfBirth!.year}',
+                  value: _formatProfileBirthday(profile.dateOfBirth!),
                 ),
             ],
           ),

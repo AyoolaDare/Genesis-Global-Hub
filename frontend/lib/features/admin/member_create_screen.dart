@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/widgets/sidebar.dart';
@@ -10,9 +9,22 @@ import '../../providers/members_provider.dart';
 import '../../providers/structure_provider.dart';
 
 const _months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
+
+const _memberTypeNew = 'NEW';
+const _memberTypeExisting = 'EXISTING';
 
 class MemberCreateScreen extends ConsumerStatefulWidget {
   const MemberCreateScreen({super.key});
@@ -38,11 +50,25 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
   String? _gender;
   String? _maritalStatus;
   int? _birthDay;
-  int? _birthMonth; // 1–12
+  int? _birthMonth;
+  String _memberType = _memberTypeNew;
+  String? _selectedDepartmentId;
+  String? _selectedTeamId;
+  String? _selectedGroupId;
 
-  // Assignment
-  String _assignmentType = 'NONE'; // NONE / DEPARTMENT / TEAM / GROUP
-  String? _selectedAssignmentId;
+  int get _maxBirthDay {
+    switch (_birthMonth) {
+      case 2:
+        return 29;
+      case 4:
+      case 6:
+      case 9:
+      case 11:
+        return 30;
+      default:
+        return 31;
+    }
+  }
 
   @override
   void dispose() {
@@ -59,19 +85,28 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
 
   Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_memberType == _memberTypeExisting &&
+        _selectedDepartmentId == null &&
+        _selectedTeamId == null &&
+        _selectedGroupId == null) {
+      setState(() {
+        _errorMessage =
+            'Please choose at least one department, team, or group for an existing member.';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+
     try {
-      // Combine landmark + state into address
       final landmark = _landmarkController.text.trim();
       final state = _stateController.text.trim();
-      final address = [landmark, state]
-          .where((s) => s.isNotEmpty)
-          .join(', ');
+      final address = [landmark, state].where((s) => s.isNotEmpty).join(', ');
 
-      // Build date_of_birth as "1900-MM-DD" (year 1900 = year not collected)
       String? dateOfBirth;
       if (_birthMonth != null && _birthDay != null) {
         dateOfBirth =
@@ -100,18 +135,29 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
       final memberId =
           await ref.read(membersProvider.notifier).createMemberAndGetId(data);
 
-      // Assign to dept/team/group if selected
-      if (_assignmentType != 'NONE' &&
-          _selectedAssignmentId != null &&
-          memberId != null) {
+      if (_memberType == _memberTypeExisting && memberId != null) {
         final dio = ref.read(dioProvider);
-        await dio.post(
-          ApiEndpoints.memberAssign(memberId),
-          data: {
-            'assignment_type': _assignmentType,
-            'assignment_id': _selectedAssignmentId,
-          },
-        );
+        final assignments = <Map<String, String>>[
+          if (_selectedDepartmentId != null)
+            {
+              'assignment_type': 'DEPARTMENT',
+              'assignment_id': _selectedDepartmentId!,
+            },
+          if (_selectedTeamId != null)
+            {
+              'assignment_type': 'TEAM',
+              'assignment_id': _selectedTeamId!,
+            },
+          if (_selectedGroupId != null)
+            {
+              'assignment_type': 'GROUP',
+              'assignment_id': _selectedGroupId!,
+            },
+        ];
+
+        for (final assignment in assignments) {
+          await dio.post(ApiEndpoints.memberAssign(memberId), data: assignment);
+        }
       }
 
       if (mounted) {
@@ -152,8 +198,6 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                     _ErrorBanner(message: _errorMessage!),
                     const SizedBox(height: 16),
                   ],
-
-                  // ── Personal Information ──────────────────────────────────
                   _FormSection(
                     title: 'Personal Information',
                     children: [
@@ -163,7 +207,8 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                             child: TextFormField(
                               controller: _firstNameController,
                               decoration: const InputDecoration(
-                                  labelText: 'First Name *'),
+                                labelText: 'First Name *',
+                              ),
                               validator: (v) => v == null || v.isEmpty
                                   ? 'First name is required'
                                   : null,
@@ -174,7 +219,8 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                             child: TextFormField(
                               controller: _lastNameController,
                               decoration: const InputDecoration(
-                                  labelText: 'Last Name *'),
+                                labelText: 'Last Name *',
+                              ),
                               validator: (v) => v == null || v.isEmpty
                                   ? 'Last name is required'
                                   : null,
@@ -191,11 +237,13 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                           hintText: '08012345678',
                         ),
                         validator: (v) {
-                          if (v == null || v.isEmpty)
+                          if (v == null || v.isEmpty) {
                             return 'Phone number is required';
+                          }
                           final phone =
                               v.replaceAll(' ', '').replaceAll('-', '');
-                          if (!RegExp(r'^(0\d{10}|234\d{10})$').hasMatch(phone)) {
+                          if (!RegExp(r'^(0\d{10}|234\d{10})$')
+                              .hasMatch(phone)) {
                             return 'Enter a valid Nigerian phone number';
                           }
                           return null;
@@ -217,33 +265,29 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _gender,
-                              decoration:
-                                  const InputDecoration(labelText: 'Gender'),
-                              items: ['Male', 'Female']
-                                  .map((g) =>
-                                      DropdownMenuItem(value: g, child: Text(g)))
-                                  .toList(),
-                              onChanged: (v) => setState(() => _gender = v),
-                            ),
-                          ),
-                        ],
+                      DropdownButtonFormField<String>(
+                        value: _gender,
+                        decoration: const InputDecoration(labelText: 'Gender'),
+                        items: ['Male', 'Female']
+                            .map(
+                              (g) => DropdownMenuItem(
+                                value: g,
+                                child: Text(g),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(() => _gender = v),
                       ),
                       const SizedBox(height: 16),
-                      // Birthday: Month + Day only (no year)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Birthday (Month & Day)',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: AppColors.textSecondary),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
                           ),
                           const SizedBox(height: 8),
                           Row(
@@ -252,8 +296,9 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                                 flex: 3,
                                 child: DropdownButtonFormField<int>(
                                   value: _birthMonth,
-                                  decoration:
-                                      const InputDecoration(labelText: 'Month'),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Month',
+                                  ),
                                   items: List.generate(
                                     12,
                                     (i) => DropdownMenuItem(
@@ -261,32 +306,32 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                                       child: Text(_months[i]),
                                     ),
                                   ),
-                                  onChanged: (v) =>
-                                      setState(() => _birthMonth = v),
+                                  onChanged: (v) => setState(() {
+                                    _birthMonth = v;
+                                    if (_birthDay != null &&
+                                        _birthDay! > _maxBirthDay) {
+                                      _birthDay = null;
+                                    }
+                                  }),
                                 ),
                               ),
                               const SizedBox(width: 16),
                               Expanded(
                                 flex: 2,
-                                child: TextFormField(
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly
-                                  ],
-                                  decoration:
-                                      const InputDecoration(labelText: 'Day'),
-                                  onChanged: (v) {
-                                    final d = int.tryParse(v);
-                                    setState(() => _birthDay = d);
-                                  },
-                                  validator: (v) {
-                                    if (v == null || v.isEmpty) return null;
-                                    final d = int.tryParse(v);
-                                    if (d == null || d < 1 || d > 31) {
-                                      return 'Enter 1–31';
-                                    }
-                                    return null;
-                                  },
+                                child: DropdownButtonFormField<int>(
+                                  value: _birthDay,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Day',
+                                  ),
+                                  items: List.generate(
+                                    _maxBirthDay,
+                                    (i) => DropdownMenuItem(
+                                      value: i + 1,
+                                      child: Text('${i + 1}'),
+                                    ),
+                                  ),
+                                  onChanged: (v) =>
+                                      setState(() => _birthDay = v),
                                 ),
                               ),
                             ],
@@ -296,8 +341,6 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-
-                  // ── Additional Information ────────────────────────────────
                   _FormSection(
                     title: 'Additional Information',
                     children: [
@@ -306,16 +349,18 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                           Expanded(
                             child: TextFormField(
                               controller: _landmarkController,
-                              decoration:
-                                  const InputDecoration(labelText: 'Landmark'),
+                              decoration: const InputDecoration(
+                                labelText: 'Landmark',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: TextFormField(
                               controller: _stateController,
-                              decoration:
-                                  const InputDecoration(labelText: 'State'),
+                              decoration: const InputDecoration(
+                                labelText: 'State',
+                              ),
                             ),
                           ),
                         ],
@@ -326,8 +371,9 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                           Expanded(
                             child: TextFormField(
                               controller: _occupationController,
-                              decoration:
-                                  const InputDecoration(labelText: 'Occupation'),
+                              decoration: const InputDecoration(
+                                labelText: 'Occupation',
+                              ),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -335,10 +381,20 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                             child: DropdownButtonFormField<String>(
                               value: _maritalStatus,
                               decoration: const InputDecoration(
-                                  labelText: 'Marital Status'),
-                              items: ['Single', 'Married', 'Divorced', 'Widowed']
-                                  .map((s) =>
-                                      DropdownMenuItem(value: s, child: Text(s)))
+                                labelText: 'Marital Status',
+                              ),
+                              items: [
+                                'Single',
+                                'Married',
+                                'Divorced',
+                                'Widowed',
+                              ]
+                                  .map(
+                                    (s) => DropdownMenuItem(
+                                      value: s,
+                                      child: Text(s),
+                                    ),
+                                  )
                                   .toList(),
                               onChanged: (v) =>
                                   setState(() => _maritalStatus = v),
@@ -358,32 +414,40 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
-
-                  // ── Church Assignment ─────────────────────────────────────
                   _FormSection(
-                    title: 'Church Assignment (Optional)',
+                    title: 'Member Type',
                     children: [
                       DropdownButtonFormField<String>(
-                        value: _assignmentType,
+                        value: _memberType,
                         decoration: const InputDecoration(
-                            labelText: 'Assign to'),
+                          labelText: 'Member Type *',
+                        ),
                         items: const [
                           DropdownMenuItem(
-                              value: 'NONE', child: Text('None')),
+                            value: _memberTypeNew,
+                            child: Text('New member'),
+                          ),
                           DropdownMenuItem(
-                              value: 'DEPARTMENT', child: Text('Department')),
-                          DropdownMenuItem(
-                              value: 'TEAM', child: Text('Team')),
-                          DropdownMenuItem(
-                              value: 'GROUP', child: Text('Group')),
+                            value: _memberTypeExisting,
+                            child: Text('Existing member'),
+                          ),
                         ],
                         onChanged: (v) => setState(() {
-                          _assignmentType = v ?? 'NONE';
-                          _selectedAssignmentId = null;
+                          _memberType = v ?? _memberTypeNew;
+                          if (_memberType == _memberTypeNew) {
+                            _selectedDepartmentId = null;
+                            _selectedTeamId = null;
+                            _selectedGroupId = null;
+                          }
                         }),
                       ),
-                      if (_assignmentType == 'DEPARTMENT') ...[
-                        const SizedBox(height: 16),
+                    ],
+                  ),
+                  if (_memberType == _memberTypeExisting) ...[
+                    const SizedBox(height: 16),
+                    _FormSection(
+                      title: 'Existing Member Assignments',
+                      children: [
                         depts.when(
                           loading: () => const LinearProgressIndicator(),
                           error: (_, __) => const Text(
@@ -391,24 +455,22 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                             style: TextStyle(color: AppColors.error),
                           ),
                           data: (list) => DropdownButtonFormField<String>(
-                            value: _selectedAssignmentId,
+                            value: _selectedDepartmentId,
                             decoration: const InputDecoration(
-                                labelText: 'Select Department *'),
+                              labelText: 'Department',
+                            ),
                             items: list
-                                .map((d) => DropdownMenuItem(
-                                    value: d.id, child: Text(d.name)))
+                                .map(
+                                  (d) => DropdownMenuItem(
+                                    value: d.id,
+                                    child: Text(d.name),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) =>
-                                setState(() => _selectedAssignmentId = v),
-                            validator: (_) =>
-                                _assignmentType != 'NONE' &&
-                                        _selectedAssignmentId == null
-                                    ? 'Please select a ${_assignmentType.toLowerCase()}'
-                                    : null,
+                                setState(() => _selectedDepartmentId = v),
                           ),
                         ),
-                      ],
-                      if (_assignmentType == 'TEAM') ...[
                         const SizedBox(height: 16),
                         teams.when(
                           loading: () => const LinearProgressIndicator(),
@@ -417,24 +479,22 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                             style: TextStyle(color: AppColors.error),
                           ),
                           data: (list) => DropdownButtonFormField<String>(
-                            value: _selectedAssignmentId,
+                            value: _selectedTeamId,
                             decoration: const InputDecoration(
-                                labelText: 'Select Team *'),
+                              labelText: 'Team',
+                            ),
                             items: list
-                                .map((t) => DropdownMenuItem(
-                                    value: t.id, child: Text(t.name)))
+                                .map(
+                                  (t) => DropdownMenuItem(
+                                    value: t.id,
+                                    child: Text(t.name),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) =>
-                                setState(() => _selectedAssignmentId = v),
-                            validator: (_) =>
-                                _assignmentType != 'NONE' &&
-                                        _selectedAssignmentId == null
-                                    ? 'Please select a team'
-                                    : null,
+                                setState(() => _selectedTeamId = v),
                           ),
                         ),
-                      ],
-                      if (_assignmentType == 'GROUP') ...[
                         const SizedBox(height: 16),
                         groups.when(
                           loading: () => const LinearProgressIndicator(),
@@ -443,27 +503,26 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
                             style: TextStyle(color: AppColors.error),
                           ),
                           data: (list) => DropdownButtonFormField<String>(
-                            value: _selectedAssignmentId,
+                            value: _selectedGroupId,
                             decoration: const InputDecoration(
-                                labelText: 'Select Group *'),
+                              labelText: 'Group',
+                            ),
                             items: list
-                                .map((g) => DropdownMenuItem(
-                                    value: g.id, child: Text(g.name)))
+                                .map(
+                                  (g) => DropdownMenuItem(
+                                    value: g.id,
+                                    child: Text(g.name),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) =>
-                                setState(() => _selectedAssignmentId = v),
-                            validator: (_) =>
-                                _assignmentType != 'NONE' &&
-                                        _selectedAssignmentId == null
-                                    ? 'Please select a group'
-                                    : null,
+                                setState(() => _selectedGroupId = v),
                           ),
                         ),
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
-
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -500,10 +559,6 @@ class _MemberCreateScreenState extends ConsumerState<MemberCreateScreen> {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Shared form section widget
-// ---------------------------------------------------------------------------
 
 class _FormSection extends StatelessWidget {
   final String title;

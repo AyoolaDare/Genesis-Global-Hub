@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/api_endpoints.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/file_import.dart';
 import '../../core/widgets/sidebar.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import '../../core/widgets/empty_state.dart';
@@ -67,6 +68,12 @@ class _SponsorsListScreenState extends ConsumerState<SponsorsListScreen> {
     return ShellLayout(
       title: 'Sponsors',
       actions: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.upload_file_outlined, size: 18),
+          label: const Text('Upload CSV/XLSX'),
+          onPressed: () => _showUploadSheet(context),
+        ),
+        const SizedBox(width: 8),
         ElevatedButton.icon(
           icon: const Icon(Icons.add, size: 18),
           label: const Text('Add Sponsor'),
@@ -219,6 +226,20 @@ class _SponsorsListScreenState extends ConsumerState<SponsorsListScreen> {
           },
         ),
       ],
+    );
+  }
+
+  void _showUploadSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _UploadSponsorsSheet(
+        onComplete: () => ref.read(sponsorProvider.notifier).refresh(),
+      ),
     );
   }
 
@@ -557,5 +578,391 @@ class _CreateSponsorSheetState
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Upload sponsors sheet
+// ---------------------------------------------------------------------------
+
+class _UploadSponsorsSheet extends ConsumerStatefulWidget {
+  final VoidCallback onComplete;
+
+  const _UploadSponsorsSheet({required this.onComplete});
+
+  @override
+  ConsumerState<_UploadSponsorsSheet> createState() =>
+      _UploadSponsorsSheetState();
+}
+
+class _UploadSponsorsSheetState
+    extends ConsumerState<_UploadSponsorsSheet> {
+  UploadState _state = UploadState.idle;
+  ParsedImport? _parsed;
+  List<Map<String, dynamic>> _validRows = [];
+  int _invalidCount = 0;
+
+  int _importedCount = 0;
+  int _failedCount = 0;
+  int _currentRow = 0;
+  final List<String> _errors = [];
+
+  void _pickFile() {
+    pickAndParseFile(
+      onSuccess: (result) {
+        final valid = <Map<String, dynamic>>[];
+        int invalid = 0;
+        for (final row in result.rows) {
+          final sponsor = _rowToSponsorJson(row);
+          if (sponsor != null) {
+            valid.add(sponsor);
+          } else {
+            invalid++;
+          }
+        }
+        setState(() {
+          _parsed = result;
+          _validRows = valid;
+          _invalidCount = invalid;
+          _state = UploadState.reviewing;
+        });
+      },
+      onError: (msg) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+          );
+        }
+      },
+    );
+  }
+
+  Map<String, dynamic>? _rowToSponsorJson(Map<String, String> row) {
+    final name = notEmpty(
+      row['name'] ?? row['full_name'] ?? row['sponsor_name'],
+    );
+    if (name == null) return null;
+
+    final phone =
+        notEmpty(row['phone'] ?? row['mobile'] ?? row['phone_number']);
+    if (phone == null) return null;
+
+    final amountRaw =
+        row['amount'] ?? row['pledge_amount'] ?? row['contribution'] ?? '';
+    final amount = double.tryParse(amountRaw.replaceAll(',', ''));
+    if (amount == null) return null;
+
+    final tier = normaliseSponsorTier(
+      row['tier'] ?? row['category'] ?? row['type'] ?? row['sponsorship_tier'],
+    );
+    if (tier == null) return null;
+
+    final email = notEmpty(row['email'] ?? row['email_address']);
+
+    return {
+      'name': name,
+      'phone': phone,
+      'pledge_amount': amount,
+      'category': tier,
+      if (email != null) 'email': email,
+    };
+  }
+
+  Future<void> _startImport() async {
+    setState(() {
+      _state = UploadState.importing;
+      _importedCount = 0;
+      _failedCount = 0;
+      _currentRow = 0;
+      _errors.clear();
+    });
+
+    final dio = ref.read(dioProvider);
+    for (int i = 0; i < _validRows.length; i++) {
+      if (!mounted) return;
+      setState(() => _currentRow = i + 1);
+      try {
+        await dio.post(ApiEndpoints.sponsors, data: _validRows[i]);
+        _importedCount++;
+      } catch (e) {
+        _failedCount++;
+        final name = _validRows[i]['name'] ?? 'Row ${i + 1}';
+        _errors.add('$name: ${_friendlyError(e.toString())}');
+      }
+    }
+
+    widget.onComplete();
+    if (mounted) setState(() => _state = UploadState.done);
+  }
+
+  String _friendlyError(String e) {
+    if (e.contains('422') || e.contains('invalid')) return 'Invalid data';
+    if (e.contains('409') || e.contains('already exists')) return 'Already exists';
+    return 'Failed';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 520),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Import Sponsors',
+                    style: Theme.of(context).textTheme.titleLarge),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: _state == UploadState.importing
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildBody(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    switch (_state) {
+      case UploadState.idle:
+        return _buildIdle();
+      case UploadState.reviewing:
+        return _buildReviewing();
+      case UploadState.importing:
+        return _buildImporting();
+      case UploadState.done:
+        return _buildDone();
+    }
+  }
+
+  Widget _buildIdle() {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceVariant,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.upload_file_outlined,
+                  size: 48, color: AppColors.textSecondary),
+              const SizedBox(height: 12),
+              const Text(
+                'Upload a CSV or XLSX file',
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Required columns: name, phone, amount, tier\n'
+                'Optional: email\n'
+                'Tier values: monthly, quarterly, annual, one_time',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _pickFile,
+            icon: const Icon(Icons.folder_open_outlined, size: 18),
+            label: const Text('Choose File'),
+            style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReviewing() {
+    final p = _parsed!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.success.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.success.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.insert_drive_file_outlined,
+                  color: AppColors.success, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(p.fileName,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _SponsorSummaryRow(
+          icon: Icons.check_circle_outline,
+          color: AppColors.success,
+          label: '${_validRows.length} rows ready to import',
+        ),
+        if (_invalidCount > 0) ...[
+          const SizedBox(height: 8),
+          _SponsorSummaryRow(
+            icon: Icons.warning_amber_outlined,
+            color: AppColors.warning,
+            label:
+                '$_invalidCount rows will be skipped (missing name, phone, amount or tier)',
+          ),
+        ],
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => setState(() {
+                  _state = UploadState.idle;
+                  _parsed = null;
+                }),
+                child: const Text('Choose Different File'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _validRows.isEmpty ? null : _startImport,
+                child: Text('Import ${_validRows.length} Sponsors'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImporting() {
+    final total = _validRows.length;
+    final progress = total == 0 ? 0.0 : _currentRow / total;
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        const CircularProgressIndicator(),
+        const SizedBox(height: 20),
+        Text(
+          'Importing $_currentRow of $total...',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 16),
+        LinearProgressIndicator(
+          value: progress,
+          backgroundColor: AppColors.border,
+          color: AppColors.primary,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '${(progress * 100).toInt()}%',
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildDone() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_importedCount > 0)
+          _SponsorSummaryRow(
+            icon: Icons.check_circle_outline,
+            color: AppColors.success,
+            label: '$_importedCount sponsors imported successfully',
+          ),
+        if (_failedCount > 0) ...[
+          const SizedBox(height: 8),
+          _SponsorSummaryRow(
+            icon: Icons.error_outline,
+            color: AppColors.error,
+            label: '$_failedCount rows failed',
+          ),
+        ],
+        if (_errors.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            height: 120,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.error.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.error.withOpacity(0.2)),
+            ),
+            child: ListView.builder(
+              itemCount: _errors.length,
+              itemBuilder: (_, i) => Text(
+                '• ${_errors[i]}',
+                style:
+                    const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Done'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SponsorSummaryRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+
+  const _SponsorSummaryRow({
+    required this.icon,
+    required this.color,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(label,
+              style: TextStyle(
+                  color: color, fontWeight: FontWeight.w500)),
+        ),
+      ],
+    );
   }
 }
