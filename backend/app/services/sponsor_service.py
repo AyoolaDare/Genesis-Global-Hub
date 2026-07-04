@@ -34,6 +34,53 @@ logger = logging.getLogger(__name__)
 flutterwave = FlutterwaveClient()
 
 
+def _sponsor_phone_channel(sponsor: Sponsor) -> str:
+    preferred = getattr(sponsor.preferred_channel, "value", sponsor.preferred_channel)
+    return "WHATSAPP" if preferred == "WHATSAPP" else "SMS"
+
+
+def _queue_sponsor_thank_you(
+    db: Session,
+    sponsor: Sponsor,
+    amount: float,
+    payment_date: Optional[datetime] = None,
+    tx_ref: Optional[str] = None,
+) -> int:
+    """Queue thank-you messages for every available sponsor contact channel."""
+    payload = {
+        "sponsor_name": sponsor.full_name,
+        "amount": float(amount),
+        "payment_date": (payment_date or datetime.now(timezone.utc)).isoformat(),
+    }
+    if tx_ref:
+        payload["tx_ref"] = tx_ref
+
+    queued = 0
+    if sponsor.phone:
+        queue_notification(
+            db=db,
+            recipient_type="SPONSOR",
+            recipient_id=sponsor.id,
+            channel=_sponsor_phone_channel(sponsor),
+            template_key="PAYMENT_THANK_YOU",
+            payload={**payload, "phone": sponsor.phone},
+        )
+        queued += 1
+
+    if sponsor.email:
+        queue_notification(
+            db=db,
+            recipient_type="SPONSOR",
+            recipient_id=sponsor.id,
+            channel="EMAIL",
+            template_key="PAYMENT_THANK_YOU",
+            payload={**payload, "email": sponsor.email},
+        )
+        queued += 1
+
+    return queued
+
+
 def _rollback_after_dashboard_error(db: Session, section: str, exc: Exception) -> None:
     logger.exception("Finance dashboard section '%s' failed: %s", section, exc)
     try:
@@ -174,20 +221,12 @@ def record_payment(
     db.flush()
 
     # Queue thank-you notification
-    if sponsor.phone or sponsor.email:
-        channel = sponsor.preferred_channel or "SMS"
-        queue_notification(
-            db=db,
-            recipient_type="SPONSOR",
-            recipient_id=sponsor.id,
-            channel=channel,
-            template_key="PAYMENT_THANK_YOU",
-            payload={
-                "sponsor_name": sponsor.full_name,
-                "amount": float(data.amount),
-                "payment_date": (data.payment_date or datetime.now(timezone.utc)).isoformat(),
-            },
-        )
+    _queue_sponsor_thank_you(
+        db=db,
+        sponsor=sponsor,
+        amount=float(data.amount),
+        payment_date=data.payment_date or payment.payment_date,
+    )
 
     return payment
 
@@ -397,20 +436,13 @@ async def verify_flutterwave_payment(
         )
         db.flush()
 
-        if sponsor.phone or sponsor.email:
-            channel = getattr(sponsor.preferred_channel, "value", sponsor.preferred_channel) or "SMS"
-            queue_notification(
-                db=db,
-                recipient_type="SPONSOR",
-                recipient_id=sponsor.id,
-                channel=channel,
-                template_key="PAYMENT_THANK_YOU",
-                payload={
-                    "sponsor_name": sponsor.full_name,
-                    "amount": float(payment.amount),
-                    "tx_ref": tx_ref,
-                },
-            )
+        _queue_sponsor_thank_you(
+            db=db,
+            sponsor=sponsor,
+            amount=float(payment.amount),
+            payment_date=payment.payment_date,
+            tx_ref=tx_ref,
+        )
 
     elif fw_status == "failed":
         payment.status = PaymentStatusEnum.FAILED

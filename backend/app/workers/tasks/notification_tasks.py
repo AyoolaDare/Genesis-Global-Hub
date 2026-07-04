@@ -154,7 +154,7 @@ def send_welcome_sms(member_id: str) -> dict:
 def send_payment_thank_you(payment_id: str) -> dict:
     """
     Load a SponsorPayment and its Sponsor from the database, then send
-    a thank-you notification via the sponsor's preferred channel.
+    thank-you notifications by email and phone channel where available.
 
     Marks thank_you_sent_at on the payment record on success.
 
@@ -162,12 +162,18 @@ def send_payment_thank_you(payment_id: str) -> dict:
         payment_id: UUID string of the SponsorPayment record.
 
     Returns:
-        Dict with keys: success, payment_id, channel, message.
+        Dict with keys: success, payment_id, channels, message.
     """
     from app.integrations.termii import termii
-    from app.models.sponsor import SponsorPayment, Sponsor
+    from app.models.sponsor import PaymentStatusEnum, SponsorPayment, Sponsor
 
-    result = {"success": False, "payment_id": payment_id, "channel": None, "message": ""}
+    result = {
+        "success": False,
+        "payment_id": payment_id,
+        "channel": None,
+        "channels": [],
+        "message": "",
+    }
     try:
         with get_db_context() as db:
             payment = db.query(SponsorPayment).filter(
@@ -188,6 +194,15 @@ def send_payment_thank_you(payment_id: str) -> dict:
                 )
                 return result
 
+            if payment.status != PaymentStatusEnum.COMPLETED:
+                result["message"] = "Payment is not completed - thank-you not sent"
+                logger.info(
+                    "send_payment_thank_you: payment=%s status=%s - skipping",
+                    payment_id,
+                    payment.status,
+                )
+                return result
+
             sponsor: Optional[Sponsor] = db.query(Sponsor).filter(
                 Sponsor.id == payment.sponsor_id,
                 Sponsor.deleted_at.is_(None),
@@ -198,14 +213,14 @@ def send_payment_thank_you(payment_id: str) -> dict:
                 logger.warning("send_payment_thank_you: sponsor not found for payment=%s", payment_id)
                 return result
 
-            first_name = sponsor.full_name.split()[0]
+            first_name = sponsor.full_name.split()[0] if sponsor.full_name else "Friend"
             amount_str = f"{payment.amount:,.0f}"
-            channel = sponsor.preferred_channel.value.lower() if sponsor.preferred_channel else "sms"
-            result["channel"] = channel
+            preferred = sponsor.preferred_channel.value.lower() if sponsor.preferred_channel else "sms"
 
-            sent = False
+            sent_channels: list[str] = []
+            failed_channels: list[str] = []
 
-            if channel == "email" and sponsor.email:
+            if sponsor.email:
                 from app.integrations.brevo import BrevoClient
                 brevo = BrevoClient()
                 html_body = (
@@ -221,52 +236,64 @@ def send_payment_thank_you(payment_id: str) -> dict:
                         subject="Thank You for Your Generosity — Genesis Global",
                         html_content=html_body,
                     )
+                    if sent:
+                        sent_channels.append("EMAIL")
+                    else:
+                        failed_channels.append("EMAIL")
                 except Exception as email_exc:
                     logger.error("send_payment_thank_you email error: %s", str(email_exc))
-                    sent = False
+                    failed_channels.append("EMAIL")
 
-            elif channel == "whatsapp" and sponsor.phone:
-                _run_async(
-                    termii.send_templated_message(
-                        to=sponsor.phone,
-                        template_key="payment_thank_you",
-                        template_vars={"name": first_name, "amount": amount_str},
-                        channel="whatsapp",
+            if sponsor.phone:
+                phone_channel = "whatsapp" if preferred == "whatsapp" else "generic"
+                channel_name = "WHATSAPP" if phone_channel == "whatsapp" else "SMS"
+                try:
+                    _run_async(
+                        termii.send_templated_message(
+                            to=sponsor.phone,
+                            template_key="payment_thank_you",
+                            template_vars={"name": first_name, "amount": amount_str},
+                            channel=phone_channel,
+                        )
                     )
-                )
-                sent = True
-
-            elif sponsor.phone:
-                # Default to SMS
-                _run_async(
-                    termii.send_templated_message(
-                        to=sponsor.phone,
-                        template_key="payment_thank_you",
-                        template_vars={"name": first_name, "amount": amount_str},
-                        channel="generic",
+                    sent_channels.append(channel_name)
+                except Exception as sms_exc:
+                    logger.error(
+                        "send_payment_thank_you %s error: %s",
+                        channel_name.lower(),
+                        str(sms_exc),
                     )
-                )
-                sent = True
+                    failed_channels.append(channel_name)
 
-            else:
+            if not sponsor.phone and not sponsor.email:
                 result["message"] = "Sponsor has no contact info for notifications"
                 logger.warning(
                     "send_payment_thank_you: sponsor=%s has no phone or email", sponsor.id
                 )
                 return result
 
-            if sent:
+            if sent_channels:
                 # Update thank_you_sent_at
                 payment.thank_you_sent_at = datetime.now(timezone.utc)
                 db.flush()
 
-        result["success"] = sent
-        result["message"] = "Thank-you notification sent" if sent else "Notification failed"
+        result["success"] = bool(sent_channels)
+        result["channel"] = ",".join(sent_channels) if sent_channels else None
+        result["channels"] = sent_channels
+        if sent_channels and failed_channels:
+            result["message"] = (
+                f"Thank-you sent via {', '.join(sent_channels)}; "
+                f"failed via {', '.join(failed_channels)}"
+            )
+        elif sent_channels:
+            result["message"] = f"Thank-you sent via {', '.join(sent_channels)}"
+        else:
+            result["message"] = "Notification failed"
         logger.info(
-            "send_payment_thank_you: payment=%s channel=%s success=%s",
+            "send_payment_thank_you: payment=%s channels=%s success=%s",
             payment_id,
-            channel,
-            sent,
+            sent_channels,
+            bool(sent_channels),
         )
         return result
 

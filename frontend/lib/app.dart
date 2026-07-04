@@ -37,6 +37,7 @@ import 'features/finance/finance_dashboard.dart';
 import 'features/finance/sponsors_list_screen.dart';
 import 'features/finance/sponsor_detail_screen.dart';
 import 'features/finance/payments_screen.dart';
+import 'features/finance/payment_complete_screen.dart';
 import 'features/hr/hr_dashboard.dart';
 import 'features/hr/workers_list_screen.dart';
 import 'features/hr/worker_detail_screen.dart';
@@ -61,8 +62,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuthenticated = authState.isAuthenticated;
       final isLoginRoute = state.matchedLocation == '/login' ||
           state.matchedLocation == '/forgot-password';
+      final isPublicRoute =
+          isLoginRoute || state.matchedLocation == '/payment/complete';
 
-      if (!isAuthenticated && !isLoginRoute) {
+      if (!isAuthenticated && !isPublicRoute) {
         return '/login';
       }
 
@@ -118,6 +121,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/payment/complete',
+        builder: (context, state) => const PaymentCompleteScreen(),
       ),
 
       // Admin / Pastor

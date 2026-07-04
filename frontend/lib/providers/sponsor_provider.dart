@@ -57,6 +57,9 @@ class Payment {
   final String? purpose;
   final String? reference;
   final String method;
+  final String status;
+  final DateTime? nextDueDate;
+  final DateTime? thankYouSentAt;
 
   const Payment({
     required this.id,
@@ -67,6 +70,9 @@ class Payment {
     this.purpose,
     this.reference,
     required this.method,
+    this.status = 'COMPLETED',
+    this.nextDueDate,
+    this.thankYouSentAt,
   });
 
   factory Payment.fromJson(Map<String, dynamic> json) {
@@ -76,10 +82,42 @@ class Payment {
       sponsorName: json['sponsor_name'],
       amount: (json['amount'] ?? 0.0).toDouble(),
       paymentDate: DateTime.parse(
-          json['payment_date'] ?? DateTime.now().toIso8601String()),
+          json['payment_date'] ??
+              json['created_at'] ??
+              DateTime.now().toIso8601String()),
       purpose: json['purpose'],
       reference: json['reference'] ?? json['tx_ref'],
       method: json['method'] ?? json['payment_method'] ?? 'CASH',
+      status: json['status']?.toString() ?? 'COMPLETED',
+      nextDueDate: json['next_due_date'] != null
+          ? DateTime.tryParse(json['next_due_date'].toString())
+          : null,
+      thankYouSentAt: json['thank_you_sent_at'] != null
+          ? DateTime.tryParse(json['thank_you_sent_at'].toString())
+          : null,
+    );
+  }
+}
+
+class PaymentInitiation {
+  final String txRef;
+  final String paymentLink;
+  final double amount;
+  final String sponsorName;
+
+  const PaymentInitiation({
+    required this.txRef,
+    required this.paymentLink,
+    required this.amount,
+    required this.sponsorName,
+  });
+
+  factory PaymentInitiation.fromJson(Map<String, dynamic> json) {
+    return PaymentInitiation(
+      txRef: json['tx_ref']?.toString() ?? '',
+      paymentLink: json['payment_link']?.toString() ?? '',
+      amount: (json['amount'] ?? 0.0).toDouble(),
+      sponsorName: json['sponsor_name']?.toString() ?? '',
     );
   }
 }

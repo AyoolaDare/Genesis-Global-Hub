@@ -78,6 +78,9 @@ class ApiEndpoints {
   static String sponsorPayments(String id) => '/giving/supporters/$id/contributions';
   static const String payments = '/giving/contributions';
   static String paymentById(String id) => '/giving/contributions/$id';
+  static const String initiatePayment = '/giving/contributions/initiate';
+  static String verifyFlutterwaveReturn(String txRef) =>
+      '/webhooks/flutterwave/verify/$txRef';
   static const String financeReports = '/giving/report/annual';
 
   // HR
