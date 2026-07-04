@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (
+    ensure_member_scope,
     get_current_user,
     require_role,
 )
@@ -87,6 +88,7 @@ async def list_members_endpoint(
 
 @router.get("/pending", summary="List pending members (admin only)")
 async def list_pending_endpoint(
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     current_user: AppUser = Depends(
@@ -94,7 +96,7 @@ async def list_pending_endpoint(
     ),
     db: Session = Depends(get_db),
 ):
-    members, total = list_pending_members(db, page, per_page)
+    members, total = list_pending_members(db, current_user, request, page, per_page)
     data = [filter_member_fields(m, current_user.role) for m in members]
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 
@@ -133,6 +135,7 @@ async def list_duplicates_endpoint(
 
 @router.post("/search", summary="Search members by name or phone")
 async def search_members_endpoint(
+    request: Request,
     body: MemberSearchRequest,
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -140,7 +143,17 @@ async def search_members_endpoint(
     if current_user.role in _MEMBER_REGISTRY_BLOCKED_ROLES:
         raise PermissionDenied(message="This role cannot search member records.")
 
-    members, total = search_members(body.query, db, body.page, body.per_page)
+    if current_user.role in (UserRole.DEPARTMENT_HEAD, UserRole.TEAM_LEADER, UserRole.GROUP_LEADER):
+        members, total = list_members(
+            db=db,
+            current_user=current_user,
+            request=request,
+            page=body.page,
+            per_page=body.per_page,
+            search=body.query,
+        )
+    else:
+        members, total = search_members(body.query, db, body.page, body.per_page)
     data = [filter_member_fields(m, current_user.role) for m in members]
     return paginated_response(data=data, total=total, page=body.page, per_page=body.per_page)
 
@@ -150,24 +163,29 @@ async def lookup_members_endpoint(
     search: str = Query(..., min_length=2, max_length=100),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=50),
+    # MEDICAL is deliberately excluded: patient↔member linking happens
+    # silently server-side; medical staff must not browse the registry.
     current_user: AppUser = Depends(
-        require_role("SUPER_ADMIN", "PASTOR", "HR_ADMIN", "MEDICAL", "FINANCE_ADMIN")
+        require_role("SUPER_ADMIN", "PASTOR", "HR_ADMIN", "FINANCE_ADMIN")
     ),
     db: Session = Depends(get_db),
 ):
     members, total = search_members(search, db, page, per_page)
-    data = [
-        {
+    data = []
+    for m in members:
+        item = {
             "id": m.id,
             "full_name": m.full_name,
             "phone": m.phone,
-            "email": m.email,
-            "gender": m.gender,
-            "date_of_birth": m.date_of_birth,
-            "address": m.address,
         }
-        for m in members
-    ]
+        if current_user.role in (UserRole.SUPER_ADMIN, UserRole.PASTOR):
+            item.update({
+                "email": m.email,
+                "gender": m.gender,
+                "date_of_birth": m.date_of_birth,
+                "address": m.address,
+            })
+        data.append(item)
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 
 
@@ -197,12 +215,16 @@ async def create_member_endpoint(
 
 @router.get("/{member_id}", summary="Get member detail")
 async def get_member_endpoint(
+    request: Request,
     member_id: uuid.UUID,
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if current_user.role in _MEMBER_REGISTRY_BLOCKED_ROLES:
         raise PermissionDenied(message="This role cannot access member records.")
+
+    if current_user.role in (UserRole.DEPARTMENT_HEAD, UserRole.TEAM_LEADER, UserRole.GROUP_LEADER):
+        ensure_member_scope(member_id, current_user, request, db)
 
     member = get_member(member_id, db)
     return success_response(data=filter_member_fields(member, current_user.role))
@@ -212,6 +234,7 @@ async def get_member_endpoint(
 
 @router.put("/{member_id}", summary="Update member")
 async def update_member_endpoint(
+    request: Request,
     member_id: uuid.UUID,
     body: MemberUpdate,
     current_user: AppUser = Depends(get_current_user),
@@ -219,6 +242,9 @@ async def update_member_endpoint(
 ):
     if current_user.role in (UserRole.MEDICAL, UserRole.FINANCE_ADMIN, UserRole.HR_ADMIN):
         raise PermissionDenied(message="Your role cannot update member records.")
+
+    if current_user.role in (UserRole.DEPARTMENT_HEAD, UserRole.TEAM_LEADER, UserRole.GROUP_LEADER):
+        ensure_member_scope(member_id, current_user, request, db)
 
     member = get_member(member_id, db)
     member = update_member(member, body, current_user, db)
@@ -245,6 +271,7 @@ async def delete_member_endpoint(
 
 @router.post("/{member_id}/approve", summary="Approve a pending member")
 async def approve_member_endpoint(
+    request: Request,
     member_id: uuid.UUID,
     body: ApproveRequest,
     current_user: AppUser = Depends(
@@ -252,6 +279,9 @@ async def approve_member_endpoint(
     ),
     db: Session = Depends(get_db),
 ):
+    if current_user.role in (UserRole.DEPARTMENT_HEAD, UserRole.TEAM_LEADER, UserRole.GROUP_LEADER):
+        ensure_member_scope(member_id, current_user, request, db)
+
     member = get_member(member_id, db)
     member = approve_member(member, current_user, body.admin_notes, db)
     return success_response(

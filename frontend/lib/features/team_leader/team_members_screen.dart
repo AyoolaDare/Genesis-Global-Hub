@@ -23,7 +23,7 @@ final teamMembersProvider =
       ApiEndpoints.members,
       queryParameters: {
         'page': params['page'] ?? 1,
-        'page_size': 20,
+        'per_page': 20,
         if (params['search'] != null &&
             (params['search'] as String).isNotEmpty)
           'search': params['search'],
@@ -35,7 +35,7 @@ final teamMembersProvider =
       items: data.map((e) => Member.fromJson(e)).toList(),
       total: meta['total'] ?? 0,
       page: meta['page'] ?? 1,
-      pageSize: meta['page_size'] ?? 20,
+      pageSize: meta['per_page'] ?? 20,
       totalPages: meta['total_pages'] ?? 1,
     );
   },

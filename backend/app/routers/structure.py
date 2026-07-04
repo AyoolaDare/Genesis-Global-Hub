@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, require_role
+from app.auth.dependencies import ensure_entity_scope, get_current_user, require_role
 from app.auth.models import AppUser
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
@@ -146,12 +146,14 @@ async def update_department_endpoint(
 
 @router.get("/departments/{dept_id}/members", summary="List members in a department")
 async def dept_members_endpoint(
+    request: Request,
     dept_id: uuid.UUID,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    ensure_entity_scope("DEPARTMENT", dept_id, current_user, request, db)
     members, total = get_department_members(dept_id, db, page, per_page)
     data = [{"id": m.id, "full_name": m.full_name, "phone": m.phone, "membership_status": m.membership_status} for m in members]
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
@@ -227,12 +229,14 @@ async def create_team_endpoint(
 
 @router.get("/teams/{team_id}/members", summary="List members in a team")
 async def team_members_endpoint(
+    request: Request,
     team_id: uuid.UUID,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    ensure_entity_scope("TEAM", team_id, current_user, request, db)
     members, total = get_team_members(team_id, db, page, per_page)
     data = [{"id": m.id, "full_name": m.full_name, "phone": m.phone} for m in members]
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
@@ -314,12 +318,14 @@ async def create_group_endpoint(
 
 @router.get("/groups/{group_id}/members", summary="List members in a group")
 async def group_members_endpoint(
+    request: Request,
     group_id: uuid.UUID,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    ensure_entity_scope("GROUP", group_id, current_user, request, db)
     members, total = get_group_members(group_id, db, page, per_page)
     data = [{"id": m.id, "full_name": m.full_name, "phone": m.phone} for m in members]
     return paginated_response(data=data, total=total, page=page, per_page=per_page)

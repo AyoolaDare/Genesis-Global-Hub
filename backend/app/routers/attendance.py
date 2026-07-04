@@ -16,8 +16,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, require_role
-from app.auth.models import AppUser
+from app.auth.dependencies import (
+    ensure_entity_scope,
+    ensure_member_scope,
+    get_current_user,
+    require_role,
+)
+from app.auth.models import AppUser, UserRole
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
 from app.schemas.attendance import MarkAttendanceRequest, MeetingCreate
@@ -32,6 +37,21 @@ from app.services.attendance_service import (
 )
 
 router = APIRouter(tags=["Attendance"])
+
+
+def _ensure_meeting_scope(meeting, current_user: AppUser, request: Request, db: Session) -> None:
+    """Allow global users, the meeting creator, or users scoped to the meeting entity."""
+    if current_user.role in (UserRole.SUPER_ADMIN, UserRole.PASTOR):
+        return
+    if meeting.created_by == current_user.id:
+        return
+    if meeting.meeting_type and meeting.entity_id:
+        entity_type = getattr(meeting.meeting_type, "value", meeting.meeting_type)
+        ensure_entity_scope(str(entity_type), meeting.entity_id, current_user, request, db)
+        return
+    from app.core.exceptions import ScopeViolation
+
+    raise ScopeViolation(message="You are not authorised to access this meeting.")
 
 
 @router.post("/meetings", summary="Create a meeting", status_code=201)
@@ -87,11 +107,13 @@ async def list_meetings_endpoint(
 
 @router.get("/meetings/{meeting_id}", summary="Get meeting with attendance records")
 async def get_meeting_endpoint(
+    request: Request,
     meeting_id: uuid.UUID,
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     meeting = get_meeting(meeting_id, db)
+    _ensure_meeting_scope(meeting, current_user, request, db)
     attendance = get_meeting_attendance(meeting_id, db)
     return success_response(data={
         "id": meeting.id,
@@ -120,6 +142,7 @@ async def get_meeting_endpoint(
 
 @router.post("/meetings/{meeting_id}/mark", summary="Mark attendance for multiple members")
 async def mark_attendance_endpoint(
+    request: Request,
     meeting_id: uuid.UUID,
     body: MarkAttendanceRequest,
     current_user: AppUser = Depends(
@@ -128,6 +151,10 @@ async def mark_attendance_endpoint(
     db: Session = Depends(get_db),
 ):
     meeting = get_meeting(meeting_id, db)
+    _ensure_meeting_scope(meeting, current_user, request, db)
+    if current_user.role not in (UserRole.SUPER_ADMIN, UserRole.PASTOR):
+        for entry in body.attendances:
+            ensure_member_scope(entry.member_id, current_user, request, db)
     records = mark_attendance(meeting, body, current_user, db)
     return success_response(
         data={"marked": len(records), "meeting_id": meeting_id},
@@ -137,10 +164,13 @@ async def mark_attendance_endpoint(
 
 @router.get("/meetings/{meeting_id}/attendance", summary="Get attendance list for a meeting")
 async def meeting_attendance_endpoint(
+    request: Request,
     meeting_id: uuid.UUID,
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    meeting = get_meeting(meeting_id, db)
+    _ensure_meeting_scope(meeting, current_user, request, db)
     records = get_meeting_attendance(meeting_id, db)
     data = [
         {
@@ -158,12 +188,14 @@ async def meeting_attendance_endpoint(
 
 @router.get("/members/{member_id}/attendance", summary="Get attendance history for a member")
 async def member_attendance_endpoint(
+    request: Request,
     member_id: uuid.UUID,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    ensure_member_scope(member_id, current_user, request, db)
     history, total = get_member_attendance_history(member_id, db, page, per_page)
     return paginated_response(data=history, total=total, page=page, per_page=per_page)
 
@@ -173,10 +205,12 @@ async def member_attendance_endpoint(
     summary="Get attendance statistics for an entity",
 )
 async def attendance_stats_endpoint(
+    request: Request,
     entity_type: str,
     entity_id: uuid.UUID,
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    ensure_entity_scope(entity_type, entity_id, current_user, request, db)
     stats = get_attendance_stats(entity_type, entity_id, db)
     return success_response(data=stats)

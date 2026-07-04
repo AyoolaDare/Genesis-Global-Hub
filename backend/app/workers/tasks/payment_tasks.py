@@ -81,20 +81,53 @@ def process_webhook_payment(self, payload: dict) -> dict:
             return result
 
 
+def _sponsors_with_latest_due(db) -> list:
+    """
+    Return (sponsor, latest_completed_payment) pairs for active recurring
+    sponsors. Due-date tracking lives on sponsor_payments.next_due_date —
+    the sponsors table has no such column.
+    """
+    from app.models.sponsor import (
+        PaymentStatusEnum,
+        Sponsor,
+        SponsorPayment,
+        SponsorshipTierEnum,
+    )
+
+    rows = (
+        db.query(Sponsor, SponsorPayment)
+        .join(SponsorPayment, SponsorPayment.sponsor_id == Sponsor.id)
+        .filter(
+            Sponsor.is_active.is_(True),
+            Sponsor.deleted_at.is_(None),
+            Sponsor.sponsorship_tier != SponsorshipTierEnum.ONE_TIME,
+            SponsorPayment.deleted_at.is_(None),
+            SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+            SponsorPayment.next_due_date.isnot(None),
+        )
+        .order_by(Sponsor.id, SponsorPayment.payment_date.desc().nulls_last())
+        .all()
+    )
+
+    latest: dict = {}
+    for sponsor, payment in rows:
+        latest.setdefault(sponsor.id, (sponsor, payment))
+    return list(latest.values())
+
+
 @celery_app.task(name="check_overdue_payments", acks_late=True)
 def check_overdue_payments() -> dict:
     """
     Daily cron job to check for overdue sponsor payments.
 
-    Logic:
-      - 3 days BEFORE due: send reminder (if not sent in last 30 days)
-      - 1-6 days AFTER due: send overdue reminder
+    Logic (based on the latest COMPLETED payment's next_due_date):
+      - 0-3 days BEFORE due: send reminder (if none sent in last 30 days)
+      - 1-6 days AFTER due: send overdue reminder SMS
       - 7+ days AFTER due: send escalation alert to finance coordinator + overdue SMS
 
     Returns:
         Dict with keys: reminders_sent, overdue_alerts_sent, escalations_sent.
     """
-    from app.models.sponsor import Sponsor, SponsorshipTierEnum
     from app.integrations.termii import termii
     from app.workers.tasks.notification_tasks import send_payment_reminder
 
@@ -104,30 +137,18 @@ def check_overdue_payments() -> dict:
 
     try:
         with get_db_context() as db:
-            # Fetch all active sponsors with a next_due_date set
-            active_sponsors = (
-                db.query(Sponsor)
-                .filter(
-                    Sponsor.is_active.is_(True),
-                    Sponsor.deleted_at.is_(None),
-                    Sponsor.sponsorship_tier != SponsorshipTierEnum.ONE_TIME,
-                    Sponsor.next_due_date.isnot(None),
-                )
-                .all()
-            )
-
-            for sponsor in active_sponsors:
-                due_date = sponsor.next_due_date
+            for sponsor, payment in _sponsors_with_latest_due(db):
+                due_date = payment.next_due_date
                 days_until_due = (due_date - today).days   # negative = overdue
                 days_overdue = -days_until_due              # positive = overdue
 
                 # Check if we sent a reminder recently (within 30 days)
                 recently_reminded = (
-                    sponsor.reminder_sent_at is not None
-                    and sponsor.reminder_sent_at.date() > thirty_days_ago
+                    payment.reminder_sent_at is not None
+                    and payment.reminder_sent_at.date() > thirty_days_ago
                 )
 
-                # 1. 3 days before due — send upcoming reminder
+                # 1. 0-3 days before due — send upcoming reminder
                 if 0 <= days_until_due <= 3 and not recently_reminded:
                     send_payment_reminder.delay(str(sponsor.id))
                     stats["reminders_sent"] += 1
@@ -147,13 +168,13 @@ def check_overdue_payments() -> dict:
                                     template_key="payment_overdue",
                                     template_vars={
                                         "name": sponsor.full_name.split()[0],
-                                        "amount": f"{sponsor.amount_per_period:,.0f}",
+                                        "amount": f"{float(sponsor.amount):,.0f}",
                                         "date": due_date.strftime("%d %b %Y"),
                                     },
                                     channel="generic",
                                 )
                             )
-                            sponsor.reminder_sent_at = datetime.now(timezone.utc)
+                            payment.reminder_sent_at = datetime.now(timezone.utc)
                             db.flush()
                             stats["overdue_alerts_sent"] += 1
                         except Exception as sms_exc:
@@ -173,13 +194,13 @@ def check_overdue_payments() -> dict:
                                     template_key="payment_overdue",
                                     template_vars={
                                         "name": sponsor.full_name.split()[0],
-                                        "amount": f"{sponsor.amount_per_period:,.0f}",
+                                        "amount": f"{float(sponsor.amount):,.0f}",
                                         "date": due_date.strftime("%d %b %Y"),
                                     },
                                     channel="generic",
                                 )
                             )
-                            sponsor.reminder_sent_at = datetime.now(timezone.utc)
+                            payment.reminder_sent_at = datetime.now(timezone.utc)
                             db.flush()
                         except Exception as sms_exc:
                             logger.error(
@@ -197,7 +218,7 @@ def check_overdue_payments() -> dict:
                             f"Sponsor: {sponsor.full_name}\n"
                             f"Phone: {sponsor.phone or 'N/A'}\n"
                             f"Email: {sponsor.email or 'N/A'}\n"
-                            f"Amount: ₦{sponsor.amount_per_period:,.2f}\n"
+                            f"Amount: ₦{float(sponsor.amount):,.2f}\n"
                             f"Tier: {sponsor.sponsorship_tier.value}\n"
                             f"Due Date: {due_date}\n"
                             f"Days Overdue: {days_overdue}\n\n"
@@ -219,6 +240,74 @@ def check_overdue_payments() -> dict:
     return stats
 
 
+@celery_app.task(name="reconcile_pending_payments", acks_late=True)
+def reconcile_pending_payments() -> dict:
+    """
+    Hourly safety net for missed webhooks.
+
+    Finds Flutterwave payments still PENDING 15+ minutes after initiation
+    (but younger than 30 days) and re-checks each against the Flutterwave
+    API via the same verification path the redirect flow uses. Payments
+    confirmed successful are credited and the thank-you is queued;
+    confirmed failures are marked FAILED.
+
+    Returns:
+        Dict with keys: checked, completed, failed, still_pending.
+    """
+    from app.integrations.webhook_handlers import handle_payment_verification
+    from app.models.sponsor import PaymentStatusEnum, SponsorPayment
+
+    stats = {"checked": 0, "completed": 0, "failed": 0, "still_pending": 0}
+    now = datetime.now(timezone.utc)
+    min_age = now - timedelta(minutes=15)
+    max_age = now - timedelta(days=30)
+
+    try:
+        with get_db_context() as db:
+            stale_pending = (
+                db.query(SponsorPayment)
+                .filter(
+                    SponsorPayment.status == PaymentStatusEnum.PENDING,
+                    SponsorPayment.deleted_at.is_(None),
+                    SponsorPayment.tx_ref.isnot(None),
+                    SponsorPayment.payment_method == "FLUTTERWAVE",
+                    SponsorPayment.created_at <= min_age,
+                    SponsorPayment.created_at >= max_age,
+                )
+                .order_by(SponsorPayment.created_at)
+                .limit(100)
+                .all()
+            )
+
+            for payment in stale_pending:
+                stats["checked"] += 1
+                try:
+                    result = _run_async(
+                        handle_payment_verification(tx_ref=payment.tx_ref, db=db)
+                    )
+                    status = result.get("status")
+                    if status == "successful":
+                        stats["completed"] += 1
+                    elif status == "failed":
+                        stats["failed"] += 1
+                    else:
+                        stats["still_pending"] += 1
+                except Exception as exc:
+                    logger.error(
+                        "reconcile_pending_payments: error for tx_ref=%s: %s",
+                        payment.tx_ref,
+                        str(exc),
+                    )
+                    stats["still_pending"] += 1
+
+    except Exception as exc:
+        logger.error("reconcile_pending_payments fatal error: %s", str(exc), exc_info=True)
+        stats["error"] = str(exc)
+
+    logger.info("reconcile_pending_payments stats: %s", stats)
+    return stats
+
+
 @celery_app.task(name="send_overdue_payment_alerts", acks_late=True)
 def send_overdue_payment_alerts() -> dict:
     """
@@ -228,35 +317,34 @@ def send_overdue_payment_alerts() -> dict:
     This is a supplementary task to check_overdue_payments, focused
     specifically on the 7+ day cohort for more urgent action.
 
+    Sponsors who already received a reminder within the last 6 days are
+    skipped so the weekly job never double-texts on top of the daily one.
+
     Returns:
         Dict with keys: alerts_sent, coordinator_notified.
     """
-    from app.models.sponsor import Sponsor, SponsorshipTierEnum
     from app.integrations.termii import termii
 
     stats = {"alerts_sent": 0, "coordinator_notified": False}
     today = date.today()
     cutoff = today - timedelta(days=7)
+    reminder_dedupe_cutoff = today - timedelta(days=6)
 
     try:
         with get_db_context() as db:
-            overdue_sponsors = (
-                db.query(Sponsor)
-                .filter(
-                    Sponsor.is_active.is_(True),
-                    Sponsor.deleted_at.is_(None),
-                    Sponsor.sponsorship_tier != SponsorshipTierEnum.ONE_TIME,
-                    Sponsor.next_due_date < cutoff,
-                    Sponsor.next_due_date.isnot(None),
-                )
-                .all()
-            )
-
             summary_lines = []
-            for sponsor in overdue_sponsors:
-                days_overdue = (today - sponsor.next_due_date).days
+            for sponsor, payment in _sponsors_with_latest_due(db):
+                if payment.next_due_date >= cutoff:
+                    continue  # not yet 7+ days overdue
 
-                if sponsor.phone:
+                days_overdue = (today - payment.next_due_date).days
+
+                recently_reminded = (
+                    payment.reminder_sent_at is not None
+                    and payment.reminder_sent_at.date() > reminder_dedupe_cutoff
+                )
+
+                if sponsor.phone and not recently_reminded:
                     try:
                         _run_async(
                             termii.send_templated_message(
@@ -264,12 +352,14 @@ def send_overdue_payment_alerts() -> dict:
                                 template_key="payment_overdue",
                                 template_vars={
                                     "name": sponsor.full_name.split()[0],
-                                    "amount": f"{sponsor.amount_per_period:,.0f}",
-                                    "date": sponsor.next_due_date.strftime("%d %b %Y"),
+                                    "amount": f"{float(sponsor.amount):,.0f}",
+                                    "date": payment.next_due_date.strftime("%d %b %Y"),
                                 },
                                 channel="generic",
                             )
                         )
+                        payment.reminder_sent_at = datetime.now(timezone.utc)
+                        db.flush()
                         stats["alerts_sent"] += 1
                     except Exception as sms_exc:
                         logger.error(
@@ -279,7 +369,7 @@ def send_overdue_payment_alerts() -> dict:
                         )
 
                 summary_lines.append(
-                    f"- {sponsor.full_name}: ₦{sponsor.amount_per_period:,.0f} "
+                    f"- {sponsor.full_name}: ₦{float(sponsor.amount):,.0f} "
                     f"({days_overdue} days overdue)"
                 )
 

@@ -37,7 +37,10 @@ class Settings(BaseSettings):
         min_length=32,
     )
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_HOURS: int = 24
+    # Short-lived access tokens: the frontend silently refreshes on 401,
+    # and scope changes (e.g. a removed department head) take effect at
+    # refresh time rather than lingering for a full day.
+    ACCESS_TOKEN_EXPIRE_HOURS: int = 4
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # ── Redis (Upstash) ────────────────────────────────────────────────────────
@@ -46,6 +49,10 @@ class Settings(BaseSettings):
     # ── Flutterwave ────────────────────────────────────────────────────────────
     FLUTTERWAVE_SECRET_KEY: str = ""
     FLUTTERWAVE_ENCRYPTION_KEY: str = ""
+    # The "Secret hash" configured in the Flutterwave dashboard (Settings →
+    # Webhooks). Flutterwave sends this value verbatim in the "verif-hash"
+    # header of every webhook; it is NOT an HMAC of the body.
+    FLUTTERWAVE_SECRET_HASH: str = ""
 
     # ── Termii (SMS) ──────────────────────────────────────────────────────────
     TERMII_API_KEY: str = ""
@@ -60,6 +67,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = ""
     CORS_ORIGINS: str = ""
     FRONTEND_URL: str = ""
+    # Optional anchored regex for preview-deploy origins. Keep it as narrow as
+    # possible (project-specific), never a bare r"https://.*\.vercel\.app".
+    ALLOWED_ORIGIN_REGEX: str = ""
 
     # ── Render (internal service routing) ─────────────────────────────────────
     RENDER_INTERNAL_URL: str = ""
@@ -67,6 +77,9 @@ class Settings(BaseSettings):
     # ── Rate Limiting ─────────────────────────────────────────────────────────
     RATE_LIMIT_AUTH_ATTEMPTS: int = 5
     RATE_LIMIT_AUTH_WINDOW_SECONDS: int = 900  # 15 minutes
+    # When Redis is unreachable the auth rate limiter normally fails open
+    # (availability over strictness). Set to False to reject logins instead.
+    RATE_LIMIT_FAIL_OPEN: bool = True
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod

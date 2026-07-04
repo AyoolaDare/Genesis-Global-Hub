@@ -4,6 +4,7 @@ Genesis Global CMS — Notification Queue Helper
 Provides a simple helper to insert jobs into the notification_queue table.
 Actual sending is done by a separate worker process.
 """
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,6 +12,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.notification import NotificationQueue
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationService:
@@ -20,40 +23,58 @@ class NotificationService:
         try:
             from app.integrations.termii import TermiiClient
             self._termii = TermiiClient()
-        except Exception:
+        except Exception as exc:
+            logger.error("NotificationService: Termii client init failed: %s", exc)
             self._termii = None
-        self._brevo = None
 
         try:
             from app.integrations.brevo import BrevoClient
             self._brevo = BrevoClient()
-        except Exception:
+        except Exception as exc:
+            logger.error("NotificationService: Brevo client init failed: %s", exc)
             self._brevo = None
 
     def queue_sms(self, phone: Optional[str], message: str) -> None:
-        if not phone or not self._termii:
+        """
+        Dispatch an SMS via the Celery send_sms task (which retries with
+        backoff and records failures). Failures are logged loudly — never
+        swallowed silently — but do not propagate to the caller.
+        """
+        if not phone:
+            logger.warning("queue_sms: no phone number provided — SMS not sent")
             return
         try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(self._termii.send_sms(phone, message))
-            else:
-                loop.run_until_complete(self._termii.send_sms(phone, message))
-        except Exception:
-            pass
+            from app.workers.tasks.notification_tasks import send_sms_task
+            send_sms_task.delay(phone=phone, message=message)
+        except Exception as exc:
+            logger.error(
+                "queue_sms: failed to enqueue SMS to %s (broker unavailable?): %s",
+                phone,
+                exc,
+                exc_info=True,
+            )
 
     def queue_email(self, to_email: str, subject: str, body: str) -> None:
+        """
+        Send a transactional email via Brevo. Failures are logged with the
+        recipient and subject — never swallowed silently — but do not
+        propagate to the caller.
+        """
         if not self._brevo:
+            logger.error("queue_email: Brevo client unavailable — email to %s not sent", to_email)
             return
         try:
-            self._brevo.send_email(
+            sent = self._brevo.send_email(
                 to_email=to_email,
                 subject=subject,
                 html_content=body,
             )
-        except Exception:
-            pass
+            if not sent:
+                logger.error("queue_email: Brevo rejected email to %s (subject=%s)", to_email, subject)
+        except Exception as exc:
+            logger.error(
+                "queue_email: send to %s failed: %s", to_email, exc, exc_info=True
+            )
 
 
 def queue_notification(

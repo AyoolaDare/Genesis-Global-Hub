@@ -136,10 +136,14 @@ def _get_user_id_from_token(request: Request) -> Optional[uuid.UUID]:
 
 
 def _get_client_ip(request: Request) -> Optional[str]:
-    """Extract real client IP, honouring X-Forwarded-For."""
+    """
+    Extract the client IP for audit records. Uses the rightmost
+    X-Forwarded-For entry (appended by our own proxy) so audit trails
+    cannot be poisoned with a client-spoofed leftmost value.
+    """
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+        return forwarded_for.split(",")[-1].strip()
     if request.client:
         return request.client.host
     return None

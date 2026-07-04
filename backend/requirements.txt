@@ -5,7 +5,7 @@
 # ── Web Framework ─────────────────────────────────────────────────────────────
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
-python-multipart==0.0.12         # Required for form data / file uploads
+python-multipart==0.0.31         # Required for form data / file uploads
 
 # ── Database ──────────────────────────────────────────────────────────────────
 sqlalchemy==2.0.36
@@ -15,10 +15,10 @@ alembic==1.14.0                  # Database migrations
 # ── Config / Settings ─────────────────────────────────────────────────────────
 pydantic==2.10.3
 pydantic-settings==2.6.1
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 
 # ── Authentication / Security ─────────────────────────────────────────────────
-python-jose[cryptography]==3.3.0  # JWT creation and verification
+python-jose[cryptography]==3.4.0  # JWT (3.3.0 had CVE-2024-33663 / CVE-2024-33664)
 passlib[bcrypt]==1.7.4            # Password hashing (bcrypt)
 
 # ── Supabase ──────────────────────────────────────────────────────────────────

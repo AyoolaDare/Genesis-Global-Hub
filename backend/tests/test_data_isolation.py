@@ -358,3 +358,79 @@ def test_follow_up_cannot_read_audit_logs():
     """Follow-up role must not have audit log access."""
     from app.auth.permissions import has_permission
     assert has_permission("FOLLOW_UP", "audit_logs:read") is False
+
+
+# ── Structure roster & attendance scope enforcement ───────────────────────────
+# Regression tests: these endpoints used to be readable by ANY authenticated
+# role (cross-tenant leak of member names/phones).
+
+def _leader_token_for(db, role, scope):
+    from tests.utils import create_user, create_token_for
+    from app.auth.models import UserRole
+    user = create_user(db, f"{role.value.lower()}-{__import__('uuid').uuid4().hex[:6]}@test.com", role=role)
+    return create_token_for(user, scope=scope)
+
+
+def test_medical_role_cannot_list_department_members(client, db):
+    from tests.utils import create_department, create_user, create_token_for, auth_headers
+    from app.auth.models import UserRole
+
+    dept = create_department(db, "Choir Isolation Test")
+    med_user = create_user(db, "med-roster@test.com", role=UserRole.MEDICAL)
+    token = create_token_for(med_user)
+
+    response = client.get(
+        f"/api/v1/departments/{dept.id}/members",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 403
+
+
+def test_member_role_cannot_read_other_member_attendance(client, db):
+    from tests.utils import create_active_member, create_user, create_token_for, auth_headers
+    from app.auth.models import UserRole
+
+    other = create_active_member(db, "Attendance Victim")
+    member_user = create_user(db, "plain-member@test.com", role=UserRole.MEMBER)
+    token = create_token_for(member_user)
+
+    response = client.get(
+        f"/api/v1/members/{other.id}/attendance",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 403
+
+
+def test_leader_cannot_list_members_of_foreign_department(client, db):
+    from tests.utils import create_department, auth_headers
+    from app.auth.models import UserRole
+
+    foreign_dept = create_department(db, "Foreign Dept")
+    own_dept = create_department(db, "Own Dept")
+    token = _leader_token_for(
+        db, UserRole.DEPARTMENT_HEAD,
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.get(
+        f"/api/v1/departments/{foreign_dept.id}/members",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 403
+
+
+def test_leader_can_list_members_of_own_department(client, db):
+    from tests.utils import create_department, auth_headers
+    from app.auth.models import UserRole
+
+    own_dept = create_department(db, "My Own Dept")
+    token = _leader_token_for(
+        db, UserRole.DEPARTMENT_HEAD,
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.get(
+        f"/api/v1/departments/{own_dept.id}/members",
+        headers=auth_headers(token),
+    )
+    assert response.status_code == 200

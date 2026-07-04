@@ -4,10 +4,9 @@ Genesis Global CMS — Flutterwave Payment Integration
 Handles:
   - Initiating payment links via Flutterwave Standard
   - Verifying transactions by ID or tx_ref
-  - HMAC-SHA256 webhook signature verification
+  - Webhook "verif-hash" secret-hash verification
   - Calculating next payment due dates per sponsorship tier
 """
-import hashlib
 import hmac
 import logging
 import uuid
@@ -209,28 +208,35 @@ class FlutterwaveClient:
 
     def verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
         """
-        Verify an incoming Flutterwave webhook's HMAC-SHA256 signature.
+        Verify an incoming Flutterwave webhook's "verif-hash" header.
 
-        Flutterwave signs the raw request body with your secret key and sends
-        the hex digest in the "verif-hash" header.
+        Flutterwave v3 does NOT sign the request body. It sends the secret
+        hash you configured in the dashboard (Settings → Webhooks) verbatim
+        in the "verif-hash" header. Verification is a constant-time equality
+        check against FLUTTERWAVE_SECRET_HASH.
 
         Args:
-            payload:   Raw request body bytes.
+            payload:   Raw request body bytes (unused; kept for call
+                       compatibility and future v4 HMAC support).
             signature: Value from the "verif-hash" request header.
 
         Returns:
-            True if the signature is valid, False otherwise.
+            True if the header matches the configured secret hash.
         """
         if not signature:
             logger.warning("Flutterwave webhook received with no verif-hash header")
             return False
+
+        secret_hash = settings.FLUTTERWAVE_SECRET_HASH
+        if not secret_hash:
+            logger.critical(
+                "FLUTTERWAVE_SECRET_HASH is not configured — rejecting webhook. "
+                "Set it to the secret hash from the Flutterwave dashboard."
+            )
+            return False
+
         try:
-            expected = hmac.new(
-                settings.FLUTTERWAVE_SECRET_KEY.encode("utf-8"),
-                payload,
-                hashlib.sha256,
-            ).hexdigest()
-            return hmac.compare_digest(expected, signature)
+            return hmac.compare_digest(secret_hash, signature)
         except Exception as exc:
             logger.error("Flutterwave signature verification error: %s", str(exc))
             return False

@@ -139,7 +139,6 @@ class PatientCreate {
   final String? allergies;
   final String? chronicConditions;
   final bool isChurchMember;
-  final String? memberId;
   final bool consentGiven;
 
   const PatientCreate({
@@ -153,7 +152,6 @@ class PatientCreate {
     this.allergies,
     this.chronicConditions,
     this.isChurchMember = false,
-    this.memberId,
     this.consentGiven = false,
   });
 
@@ -166,7 +164,6 @@ class PatientCreate {
         'chronic_conditions': chronicConditions,
         'consent_given': consentGiven,
         if (consentGiven) 'consent_date': DateTime.now().toIso8601String(),
-        'member_id': memberId,
       };
 }
 
@@ -238,7 +235,7 @@ class MedicalNotifier extends AsyncNotifier<PatientsList> {
       ApiEndpoints.patients,
       queryParameters: {
         'page': page,
-        'page_size': 20,
+        'per_page': 20,
         if (search != null && search.isNotEmpty) 'search': search,
       },
     );

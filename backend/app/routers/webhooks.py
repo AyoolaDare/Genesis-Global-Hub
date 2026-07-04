@@ -107,15 +107,27 @@ async def flutterwave_webhook(
         from app.workers.tasks.payment_tasks import process_webhook_payment
         process_webhook_payment.delay(payload)
     except Exception as queue_exc:
-        # Log the error but still return 200 to Flutterwave
-        # The webhook will NOT be retried, so log comprehensively
-        logger.error(
-            "Flutterwave webhook: failed to queue Celery task for event=%s tx_ref=%s: %s",
+        # Broker unavailable: process inline as a fallback so the payment
+        # event is not lost (Flutterwave will not retry after our 200).
+        # The hourly reconcile_pending_payments job is the second safety net.
+        logger.critical(
+            "Flutterwave webhook: failed to queue Celery task for event=%s tx_ref=%s: %s "
+            "— processing inline as fallback",
             event,
             tx_ref,
             str(queue_exc),
             exc_info=True,
         )
+        try:
+            await webhook_handlers.handle_flutterwave_payment(payload=payload, db=db)
+        except Exception as inline_exc:
+            logger.critical(
+                "Flutterwave webhook: inline fallback processing ALSO failed for tx_ref=%s: %s "
+                "— payment will be picked up by reconcile_pending_payments",
+                tx_ref,
+                str(inline_exc),
+                exc_info=True,
+            )
 
     return success_response(
         message="Webhook received",

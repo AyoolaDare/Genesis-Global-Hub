@@ -41,12 +41,15 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 def _get_client_ip(request: Request) -> Optional[str]:
     """
-    Extract the real client IP, honouring X-Forwarded-For from reverse proxies.
-    Returns the first IP from the header if present, otherwise the direct connection IP.
+    Extract the client IP used for login rate limiting and audit logs.
+
+    Uses the RIGHTMOST X-Forwarded-For entry — appended by our own reverse
+    proxy and not client-spoofable. Using the leftmost value would let an
+    attacker rotate fake IPs to bypass the login rate limit.
     """
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+        return forwarded_for.split(",")[-1].strip()
     if request.client:
         return request.client.host
     return None

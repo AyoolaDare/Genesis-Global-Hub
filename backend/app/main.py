@@ -16,10 +16,11 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.auth.dependencies import require_super_admin
 from app.auth.router import router as auth_router
 from app.routers.attendance import router as attendance_router
 from app.routers.follow_up import router as follow_up_router
@@ -127,10 +128,11 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/health/integrations", tags=["System"], summary="Integration connectivity check")
-    async def integrations_health():
+    async def integrations_health(_admin=Depends(require_super_admin)):
         """
         Check connectivity to all external integrations.
-        Safe to call in production — never exposes secrets, only status.
+        Requires SUPER_ADMIN — reveals infrastructure status, so it is not public.
+        Never exposes secrets, only per-service ok/error status.
         """
         import time
         import httpx as _httpx

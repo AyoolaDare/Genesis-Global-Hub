@@ -196,7 +196,7 @@ async def initiate_payment_endpoint(
     current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
     db: Session = Depends(get_db),
 ):
-    result = initiate_flutterwave_payment(body.sponsor_id, body.amount, body.redirect_url, db)
+    result = await initiate_flutterwave_payment(body.sponsor_id, body.amount, body.redirect_url, db)
     return success_response(data=result, message="Payment initiated.")
 
 
@@ -206,7 +206,7 @@ async def verify_payment_endpoint(
     current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
     db: Session = Depends(get_db),
 ):
-    payment = verify_flutterwave_payment(tx_ref, current_user, db)
+    payment = await verify_flutterwave_payment(tx_ref, current_user, db)
     return success_response(
         data=_serialize_payment(payment),
         message=f"Payment status: {payment.status}",

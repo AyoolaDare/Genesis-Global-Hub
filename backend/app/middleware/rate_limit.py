@@ -57,10 +57,17 @@ def _get_redis() -> redis_lib.Redis:
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract real client IP, honouring reverse-proxy headers."""
+    """
+    Extract the client IP for rate-limiting purposes.
+
+    Uses the RIGHTMOST X-Forwarded-For entry: that hop was appended by our
+    own reverse proxy (Render) and cannot be spoofed by the client, whereas
+    the leftmost value is attacker-controlled and would allow trivial
+    rate-limit bypass.
+    """
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+        return forwarded_for.split(",")[-1].strip()
     if request.client:
         return request.client.host
     return "unknown"

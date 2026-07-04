@@ -55,16 +55,7 @@ def create_patient(
     db: Session,
 ) -> MedicalPatient:
     """Create a new patient. Silently links to member if phone matches."""
-    member_link_id = data.member_id
-    if member_link_id is not None:
-        member = db.query(MemberModel).filter(
-            MemberModel.id == member_link_id,
-            MemberModel.deleted_at.is_(None),
-        ).first()
-        if not member:
-            raise NotFound(message=f"Member {member_link_id} not found.")
-    if member_link_id is None:
-        member_link_id = _find_member_link(data.full_name, data.phone, db)
+    member_link_id = _find_member_link(data.full_name, data.phone, db)
     is_church_member = member_link_id is not None
 
     patient = MedicalPatient(

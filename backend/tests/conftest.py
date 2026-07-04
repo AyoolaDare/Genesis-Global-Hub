@@ -31,6 +31,20 @@ from app.database import Base, get_db  # noqa: E402
 from app.auth.models import AppUser, UserRole  # noqa: E402
 from app.core.security import create_access_token  # noqa: E402
 
+# Import every model module so Base.metadata is complete before create_all,
+# regardless of which single test file is being run.
+from app.models import (  # noqa: E402,F401
+    attendance as _m_attendance,
+    follow_up as _m_follow_up,
+    hr as _m_hr,
+    kpi as _m_kpi,
+    medical as _m_medical,
+    member as _m_member,
+    notification as _m_notification,
+    sponsor as _m_sponsor,
+    structure as _m_structure,
+)
+
 # ── SQLite Test Engine ─────────────────────────────────────────────────────────
 
 TEST_DATABASE_URL = "sqlite:///:memory:"

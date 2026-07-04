@@ -50,12 +50,12 @@ def configure_cors(app: FastAPI) -> None:
 
     logger.info("CORS configured for origins: %s", allowed_origins)
 
-    # Allow all Vercel preview deployments + any custom domains in ALLOWED_ORIGINS.
-    # CORSMiddleware supports allow_origin_regex for pattern matching.
-    allow_origin_regex = (
-        r"https://.*\.vercel\.app"
-        r"|https://.*\.onrender\.com"
-    )
+    # SECURITY: never use a broad regex like r"https://.*\.vercel\.app" here —
+    # anyone can deploy to *.vercel.app / *.onrender.com, so that would grant
+    # any attacker-controlled site credentialed access. Preview deployments
+    # can be pinned via the ALLOWED_ORIGIN_REGEX env var when needed
+    # (e.g. r"https://genesis-cms-git-.*-myteam\.vercel\.app").
+    allow_origin_regex = settings.ALLOWED_ORIGIN_REGEX or None
 
     app.add_middleware(
         CORSMiddleware,

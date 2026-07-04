@@ -304,7 +304,7 @@ class MembersNotifier extends AsyncNotifier<MembersList> {
       ApiEndpoints.members,
       queryParameters: {
         'page': page,
-        'page_size': 20,
+        'per_page': 20,
         if (search != null && search.isNotEmpty) 'search': search,
         if (status != null) 'status': status,
       },
@@ -316,7 +316,7 @@ class MembersNotifier extends AsyncNotifier<MembersList> {
       items: items,
       total: meta['total'] ?? 0,
       page: meta['page'] ?? 1,
-      pageSize: meta['page_size'] ?? 20,
+      pageSize: meta['per_page'] ?? 20,
       totalPages: meta['total_pages'] ?? 1,
     );
   }
@@ -395,7 +395,7 @@ final pendingMembersProvider = FutureProvider<List<Member>>((ref) async {
   final dio = ref.read(dioProvider);
   final response = await dio.get(
     ApiEndpoints.members,
-    queryParameters: {'status': 'PENDING', 'page_size': 100},
+    queryParameters: {'status': 'PENDING', 'per_page': 100},
   );
   final data = response.data['data'] as List;
   return data.map((e) => Member.fromJson(e)).toList();

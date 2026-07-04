@@ -79,7 +79,7 @@ final auditLogsProvider =
       ApiEndpoints.auditLogs,
       queryParameters: {
         'page': params['page'] ?? 1,
-        'page_size': 20,
+        'per_page': 20,
         if (params['action'] != null) 'action': params['action'],
         if (params['from'] != null) 'from': params['from'],
         if (params['to'] != null) 'to': params['to'],

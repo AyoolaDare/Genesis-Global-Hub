@@ -61,6 +61,15 @@ celery_app.conf.beat_schedule = {
         "options": {"expires": 240},    # expire after 4 minutes if not consumed
     },
 
+    # ── Hourly at :30 — reconcile PENDING Flutterwave payments ────────────────
+    # Safety net for missed/lost webhooks: re-checks stale pending payments
+    # against the Flutterwave API and credits confirmed ones.
+    "reconcile-pending-payments": {
+        "task": "reconcile_pending_payments",
+        "schedule": crontab(minute=30),
+        "options": {"expires": 3000},
+    },
+
     # ── Weekly: Sunday at 20:00 Lagos time — overdue sponsor alerts ───────────
     "weekly-overdue-payment-alerts": {
         "task": "send_overdue_payment_alerts",

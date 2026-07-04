@@ -461,10 +461,14 @@ def list_members(
 
 def list_pending_members(
     db: Session,
+    current_user: AppUser,
+    request,
     page: int = 1,
     per_page: int = 20,
 ) -> tuple[list[MemberModel], int]:
     """List all members in any pending state."""
+    from app.auth.dependencies import ScopeFilter
+
     query = db.query(MemberModel).filter(
         MemberModel.deleted_at.is_(None),
         MemberModel.membership_status.in_([
@@ -473,6 +477,8 @@ def list_pending_members(
             MemberStatusEnum.PENDING_INFO_REQUESTED,
         ]),
     ).order_by(MemberModel.created_at.asc())
+
+    query = ScopeFilter.filter_members_by_scope(query, current_user, request)
 
     total = query.count()
     members = query.offset((page - 1) * per_page).limit(per_page).all()

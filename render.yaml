@@ -30,7 +30,7 @@ services:
       - key: JWT_ALGORITHM
         value: "HS256"
       - key: ACCESS_TOKEN_EXPIRE_HOURS
-        value: "24"
+        value: "4"
       - key: REFRESH_TOKEN_EXPIRE_DAYS
         value: "30"
 
@@ -42,6 +42,10 @@ services:
       - key: FLUTTERWAVE_SECRET_KEY
         sync: false
       - key: FLUTTERWAVE_ENCRYPTION_KEY
+        sync: false
+      # Secret hash from Flutterwave Dashboard > Settings > Webhooks.
+      # Required for webhook verification (sent verbatim in verif-hash header).
+      - key: FLUTTERWAVE_SECRET_HASH
         sync: false
 
       # ── Termii (SMS) — set manually ───────────────────────────────────────────
@@ -58,6 +62,9 @@ services:
 
       # ── CORS — set manually after Vercel URL is known ─────────────────────────
       - key: ALLOWED_ORIGINS
+        sync: false
+      # Optional narrow regex for preview-deploy origins (never a broad wildcard)
+      - key: ALLOWED_ORIGIN_REGEX
         sync: false
 
       # ── Rate Limiting ─────────────────────────────────────────────────────────

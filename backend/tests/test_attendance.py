@@ -16,7 +16,7 @@ from datetime import date
 
 import pytest
 
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, make_token
 from tests.utils import (
     create_active_member,
     create_attendance_record,
@@ -27,6 +27,18 @@ from tests.utils import (
 )
 from app.auth.models import UserRole
 from app.models.attendance import AttendanceStatusEnum
+from app.models.structure import MemberAssignment
+
+
+def _assign_to_department(db, member, department):
+    assignment = MemberAssignment(
+        member_id=member.id,
+        assignment_type="DEPARTMENT",
+        assignment_id=department.id,
+    )
+    db.add(assignment)
+    db.flush()
+    return assignment
 
 
 # ── Create Meeting ─────────────────────────────────────────────────────────────
@@ -349,3 +361,117 @@ def test_all_valid_meeting_types(client, db, super_admin_user, super_admin_token
             headers=auth_headers(super_admin_token),
         )
         assert response.status_code == 201, f"Meeting type {meeting_type} should be valid"
+
+
+def test_department_head_cannot_get_foreign_meeting_detail(client, db, super_admin_user):
+    """Meeting detail must be scoped to the leader's entities."""
+    own_dept = create_department(db, "Own Meeting Detail Scope")
+    foreign_dept = create_department(db, "Foreign Meeting Detail Scope")
+    head = create_user(db, "meeting-detail-head@test.com", UserRole.DEPARTMENT_HEAD)
+    meeting = create_meeting(
+        db,
+        created_by=super_admin_user.id,
+        title="Foreign Scoped Meeting",
+        meeting_type="DEPARTMENT",
+        entity_id=foreign_dept.id,
+    )
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.get(
+        f"/api/v1/meetings/{meeting.id}",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 403
+
+
+def test_department_head_cannot_list_foreign_meeting_attendance(client, db, super_admin_user):
+    """Meeting attendance records must not leak across leader scopes."""
+    own_dept = create_department(db, "Own Meeting Attendance Scope")
+    foreign_dept = create_department(db, "Foreign Meeting Attendance Scope")
+    head = create_user(db, "meeting-attendance-head@test.com", UserRole.DEPARTMENT_HEAD)
+    meeting = create_meeting(
+        db,
+        created_by=super_admin_user.id,
+        title="Foreign Attendance Meeting",
+        meeting_type="DEPARTMENT",
+        entity_id=foreign_dept.id,
+    )
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.get(
+        f"/api/v1/meetings/{meeting.id}/attendance",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 403
+
+
+def test_department_head_cannot_mark_foreign_meeting_attendance(client, db, super_admin_user):
+    """Attendance marking must require access to the meeting's entity."""
+    own_dept = create_department(db, "Own Mark Meeting Scope")
+    foreign_dept = create_department(db, "Foreign Mark Meeting Scope")
+    head = create_user(db, "meeting-mark-head@test.com", UserRole.DEPARTMENT_HEAD)
+    member = create_active_member(db, "Foreign Meeting Mark Member")
+    _assign_to_department(db, member, foreign_dept)
+    meeting = create_meeting(
+        db,
+        created_by=super_admin_user.id,
+        title="Foreign Mark Meeting",
+        meeting_type="DEPARTMENT",
+        entity_id=foreign_dept.id,
+    )
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.post(
+        f"/api/v1/meetings/{meeting.id}/mark",
+        json={"attendances": [{"member_id": str(member.id), "status": "PRESENT"}]},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 403
+
+
+def test_department_head_cannot_mark_member_outside_scope_for_own_meeting(client, db, super_admin_user):
+    """Leaders with meeting access still cannot mark unrelated members."""
+    own_dept = create_department(db, "Own Mark Member Scope")
+    foreign_dept = create_department(db, "Foreign Mark Member Scope")
+    head = create_user(db, "member-mark-head@test.com", UserRole.DEPARTMENT_HEAD)
+    outside = create_active_member(db, "Outside Mark Member")
+    _assign_to_department(db, outside, foreign_dept)
+    meeting = create_meeting(
+        db,
+        created_by=super_admin_user.id,
+        title="Own Meeting Outside Member",
+        meeting_type="DEPARTMENT",
+        entity_id=own_dept.id,
+    )
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.post(
+        f"/api/v1/meetings/{meeting.id}/mark",
+        json={"attendances": [{"member_id": str(outside.id), "status": "PRESENT"}]},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 403

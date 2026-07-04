@@ -5,6 +5,7 @@ CRITICAL:
   - NEVER return member_link_id in any response
   - Only FINANCE_ADMIN/SUPER_ADMIN can access this domain
 """
+import logging
 import uuid
 from datetime import date, datetime, time, timezone
 from typing import Optional
@@ -13,13 +14,16 @@ from sqlalchemy import func, or_, extract
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser
-from app.core.exceptions import NotFound
+from app.config import settings
+from app.core.exceptions import NotFound, ServiceUnavailable
 from app.integrations.flutterwave import FlutterwaveClient
 from app.models.sponsor import PaymentStatusEnum, Sponsor, SponsorPayment
 from app.models.member import MemberModel
 from app.schemas.sponsor import SponsorCreate, SponsorPaymentCreate, SponsorUpdate
 from app.services.dedup_service import normalize_phone
 from app.services.notification_service import queue_notification
+
+logger = logging.getLogger(__name__)
 
 flutterwave = FlutterwaveClient()
 
@@ -211,24 +215,62 @@ def list_all_payments(
 
 # ── Flutterwave Integration ────────────────────────────────────────────────────
 
-def initiate_flutterwave_payment(
+async def initiate_flutterwave_payment(
     sponsor_id: uuid.UUID,
     amount: float,
     redirect_url: Optional[str],
     db: Session,
 ) -> dict:
     """
-    Create a pending payment record and return a Flutterwave payment link.
+    Create a pending payment record and return a real Flutterwave payment link.
 
-    In production, this would call the Flutterwave API.
-    Returns a mock response for now.
+    Calls POST /payments on the Flutterwave API server-side; the secret key
+    never leaves the backend. The pending SponsorPayment row is only kept if
+    Flutterwave accepts the request.
     """
     sponsor = get_sponsor(sponsor_id, db)
 
-    # Generate a unique transaction reference
-    tx_ref = f"GEN-GLOBAL-{sponsor_id}-{int(datetime.now(timezone.utc).timestamp())}"
+    # Unique transaction reference: genesis-{sponsor_id}-{12-hex-suffix}.
+    # Must match the format expected by the webhook handler.
+    tx_ref = flutterwave.build_tx_ref(str(sponsor_id))
 
-    # Create pending payment record
+    if not redirect_url:
+        base = (settings.FRONTEND_URL or "").rstrip("/")
+        redirect_url = f"{base}/payment/complete" if base else "https://flutterwave.com"
+
+    try:
+        fw_response = await flutterwave.initiate_payment(
+            tx_ref=tx_ref,
+            amount=amount,
+            redirect_url=redirect_url,
+            customer_email=sponsor.email or "no-reply@genesisglob.al",
+            customer_name=sponsor.full_name,
+            customer_phone=sponsor.phone or "",
+            currency="NGN",
+            meta={"sponsor_id": str(sponsor_id)},
+        )
+    except Exception as exc:
+        logger.error(
+            "initiate_flutterwave_payment: Flutterwave call failed for sponsor=%s: %s",
+            sponsor_id,
+            exc,
+        )
+        raise ServiceUnavailable(
+            message="Payment provider is temporarily unavailable. Please try again."
+        )
+
+    payment_link = (fw_response.get("data") or {}).get("link")
+    if fw_response.get("status") != "success" or not payment_link:
+        logger.error(
+            "initiate_flutterwave_payment: unexpected Flutterwave response for sponsor=%s: %s",
+            sponsor_id,
+            fw_response.get("message"),
+        )
+        raise ServiceUnavailable(
+            message="Payment provider rejected the request. Please try again."
+        )
+
+    # Only record the pending payment once Flutterwave has accepted it
     payment = SponsorPayment(
         sponsor_id=sponsor_id,
         amount=amount,
@@ -239,9 +281,6 @@ def initiate_flutterwave_payment(
     db.add(payment)
     db.flush()
 
-    # In production: call Flutterwave API here
-    payment_link = f"https://checkout.flutterwave.com/v3/hosted/pay/{tx_ref}"
-
     return {
         "tx_ref": tx_ref,
         "payment_link": payment_link,
@@ -250,14 +289,17 @@ def initiate_flutterwave_payment(
     }
 
 
-def verify_flutterwave_payment(
+async def verify_flutterwave_payment(
     tx_ref: str,
     current_user: AppUser,
     db: Session,
 ) -> SponsorPayment:
     """
-    Verify a Flutterwave payment by tx_ref.
-    In production, this would call the Flutterwave verification API.
+    Verify a Flutterwave payment by tx_ref against the Flutterwave API.
+
+    The payment is only marked COMPLETED when Flutterwave confirms the
+    transaction is successful AND the paid amount/currency match what we
+    expected. Idempotent: an already-completed payment is returned as-is.
     """
     payment = db.query(SponsorPayment).filter(
         SponsorPayment.tx_ref == tx_ref,
@@ -266,19 +308,62 @@ def verify_flutterwave_payment(
     if not payment:
         raise NotFound(message=f"Payment with ref '{tx_ref}' not found.")
 
-    # In production: verify with Flutterwave API
-    # For now, mark as completed
-    if payment.status == PaymentStatusEnum.PENDING:
+    if payment.status == PaymentStatusEnum.COMPLETED:
+        return payment
+
+    try:
+        fw_response = await flutterwave.get_transaction_by_ref(tx_ref)
+    except Exception as exc:
+        logger.error("verify_flutterwave_payment: Flutterwave call failed for tx_ref=%s: %s", tx_ref, exc)
+        raise ServiceUnavailable(
+            message="Payment provider is temporarily unavailable. Please try again."
+        )
+
+    transactions = fw_response.get("data") or []
+    if not transactions:
+        # Nothing on Flutterwave's side yet — leave the record PENDING
+        return payment
+
+    tx_data = transactions[0]
+    fw_status = tx_data.get("status", "")
+    fw_amount = float(tx_data.get("amount", 0))
+    fw_currency = tx_data.get("currency", "")
+    fw_tx_id = str(tx_data.get("id", ""))
+    now = datetime.now(timezone.utc)
+
+    if fw_status == "successful":
+        expected_amount = float(payment.amount)
+        if fw_amount + 0.01 < expected_amount or fw_currency != "NGN":
+            # Underpayment / wrong currency: keep PENDING for manual review
+            payment.flutterwave_response = tx_data
+            payment.notes = (
+                f"AMOUNT MISMATCH: expected NGN {expected_amount:,.2f}, "
+                f"Flutterwave confirmed {fw_currency} {fw_amount:,.2f}. Manual review required."
+            )
+            db.flush()
+            logger.warning(
+                "verify_flutterwave_payment: amount/currency mismatch tx_ref=%s expected=%s got=%s %s",
+                tx_ref, expected_amount, fw_currency, fw_amount,
+            )
+            return payment
+
         payment.status = PaymentStatusEnum.COMPLETED
-        payment.payment_date = datetime.now(timezone.utc)
+        payment.flutterwave_tx_id = fw_tx_id
+        payment.flutterwave_response = tx_data
+        payment.amount = fw_amount
+        payment.payment_date = now
         payment.verified_by = current_user.id
-        payment.verified_at = datetime.now(timezone.utc)
+        payment.verified_at = now
+
+        # Next due date lives on the payment record (sponsor has no such column)
+        sponsor = get_sponsor(payment.sponsor_id, db)
+        payment.next_due_date = flutterwave.calculate_next_due_date(
+            sponsor.sponsorship_tier.value, date.today()
+        )
         db.flush()
 
-        # Queue thank-you
-        sponsor = get_sponsor(payment.sponsor_id, db)
         if sponsor.phone or sponsor.email:
-            channel = sponsor.preferred_channel or "SMS"
+            channel = getattr(sponsor.preferred_channel, "value", sponsor.preferred_channel) or "SMS"
             queue_notification(
                 db=db,
                 recipient_type="SPONSOR",
@@ -291,6 +376,11 @@ def verify_flutterwave_payment(
                     "tx_ref": tx_ref,
                 },
             )
+
+    elif fw_status == "failed":
+        payment.status = PaymentStatusEnum.FAILED
+        payment.flutterwave_response = tx_data
+        db.flush()
 
     return payment
 

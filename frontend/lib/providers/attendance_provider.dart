@@ -166,7 +166,7 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
         queryParameters: {
           if (groupId != null) 'group_id': groupId,
           if (teamId != null) 'team_id': teamId,
-          'page_size': 50,
+          'per_page': 50,
         },
       );
       final data = response.data['data'] as List;

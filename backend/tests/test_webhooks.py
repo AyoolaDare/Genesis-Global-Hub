@@ -201,40 +201,35 @@ def test_empty_body_with_valid_signature(client):
     assert response.status_code == 200
 
 
-# ── Real HMAC Verification Unit Test ──────────────────────────────────────────
+# ── verif-hash Verification Unit Tests ────────────────────────────────────────
+# Flutterwave v3 sends the dashboard-configured secret hash VERBATIM in the
+# verif-hash header (it is not an HMAC of the body).
 
 def test_flutterwave_verify_webhook_signature_correct_secret():
-    """Unit test the HMAC signature verification function directly."""
+    """A verif-hash matching FLUTTERWAVE_SECRET_HASH must pass."""
     from app.integrations.flutterwave import FlutterwaveClient
 
     client_instance = FlutterwaveClient()
-    secret = "test-webhook-secret-key"
+    secret_hash = "test-webhook-secret-hash"
     body = b'{"event":"charge.completed","data":{"tx_ref":"test-ref"}}'
 
-    # Generate the correct signature
-    expected_sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-
     with patch("app.integrations.flutterwave.settings") as mock_settings:
-        mock_settings.FLUTTERWAVE_SECRET_KEY = secret
-        result = client_instance.verify_webhook_signature(body, expected_sig)
+        mock_settings.FLUTTERWAVE_SECRET_HASH = secret_hash
+        result = client_instance.verify_webhook_signature(body, secret_hash)
 
     assert result is True
 
 
 def test_flutterwave_verify_webhook_signature_wrong_secret():
-    """Signature generated with a different secret must return False."""
+    """A verif-hash that differs from the configured secret hash must fail."""
     from app.integrations.flutterwave import FlutterwaveClient
 
     client_instance = FlutterwaveClient()
-    secret = "actual-secret-key"
-    wrong_secret = "wrong-secret-key"
     body = b'{"event":"charge.completed"}'
 
-    wrong_sig = hmac.new(wrong_secret.encode(), body, hashlib.sha256).hexdigest()
-
     with patch("app.integrations.flutterwave.settings") as mock_settings:
-        mock_settings.FLUTTERWAVE_SECRET_KEY = secret
-        result = client_instance.verify_webhook_signature(body, wrong_sig)
+        mock_settings.FLUTTERWAVE_SECRET_HASH = "actual-secret-hash"
+        result = client_instance.verify_webhook_signature(body, "wrong-secret-hash")
 
     assert result is False
 
@@ -247,8 +242,22 @@ def test_flutterwave_verify_empty_signature_returns_false():
     body = b'{"event":"charge.completed"}'
 
     with patch("app.integrations.flutterwave.settings") as mock_settings:
-        mock_settings.FLUTTERWAVE_SECRET_KEY = "some-secret"
+        mock_settings.FLUTTERWAVE_SECRET_HASH = "some-secret-hash"
         result = client_instance.verify_webhook_signature(body, "")
+
+    assert result is False
+
+
+def test_flutterwave_verify_unconfigured_secret_hash_rejects():
+    """When FLUTTERWAVE_SECRET_HASH is not configured, all webhooks are rejected."""
+    from app.integrations.flutterwave import FlutterwaveClient
+
+    client_instance = FlutterwaveClient()
+    body = b'{"event":"charge.completed"}'
+
+    with patch("app.integrations.flutterwave.settings") as mock_settings:
+        mock_settings.FLUTTERWAVE_SECRET_HASH = ""
+        result = client_instance.verify_webhook_signature(body, "anything")
 
     assert result is False
 
@@ -371,3 +380,141 @@ def test_calculate_next_due_date_one_time_returns_none():
     result = client_instance.calculate_next_due_date("ONE_TIME", date.today())
 
     assert result is None
+
+
+# ── Webhook Handler Behaviour (verification, idempotency, integrity) ──────────
+
+def _run(coro):
+    import asyncio
+    return asyncio.run(coro)
+
+
+def _fw_verification(tx_ref: str, amount: float, currency: str = "NGN", status: str = "successful"):
+    return {
+        "status": "success",
+        "data": {
+            "id": 998877,
+            "tx_ref": tx_ref,
+            "amount": amount,
+            "currency": currency,
+            "status": status,
+        },
+    }
+
+
+def test_webhook_handler_credits_payment_after_api_verification(db):
+    """A pending payment is credited only after Flutterwave re-verification."""
+    from app.integrations import webhook_handlers
+    from app.models.sponsor import PaymentStatusEnum
+    from tests.utils import create_sponsor, create_sponsor_payment
+
+    sponsor = create_sponsor(db, "Webhook Sponsor")
+    tx_ref = f"genesis-{sponsor.id}-abc123def456"
+    payment = create_sponsor_payment(
+        db, sponsor.id, amount=50000.0, status=PaymentStatusEnum.PENDING, tx_ref=tx_ref
+    )
+
+    payload = {
+        "event": "charge.completed",
+        "data": {"id": 998877, "tx_ref": tx_ref, "amount": 50000, "currency": "NGN", "status": "successful"},
+    }
+
+    with patch.object(
+        webhook_handlers.flutterwave,
+        "verify_payment",
+        new=AsyncMock(return_value=_fw_verification(tx_ref, 50000.0)),
+    ) as mock_verify, patch(
+        "app.workers.tasks.notification_tasks.send_payment_thank_you"
+    ) as mock_thanks, patch(
+        "app.workers.tasks.notification_tasks.send_admin_notification"
+    ) as mock_admin:
+        mock_thanks.delay = MagicMock()
+        mock_admin.delay = MagicMock()
+        _run(webhook_handlers.handle_flutterwave_payment(payload=payload, db=db))
+
+    mock_verify.assert_awaited_once()
+    assert payment.status == PaymentStatusEnum.COMPLETED
+    assert payment.flutterwave_tx_id == "998877"
+    assert payment.next_due_date is not None  # MONTHLY sponsor
+    mock_thanks.delay.assert_called_once_with(str(payment.id))
+
+
+def test_webhook_handler_is_idempotent_for_completed_payments(db):
+    """A re-delivered webhook for a COMPLETED payment must not re-credit or re-thank."""
+    from app.integrations import webhook_handlers
+    from app.models.sponsor import PaymentStatusEnum
+    from tests.utils import create_sponsor, create_sponsor_payment
+
+    sponsor = create_sponsor(db, "Idempotent Sponsor")
+    tx_ref = f"genesis-{sponsor.id}-dup000000001"
+    create_sponsor_payment(
+        db, sponsor.id, amount=50000.0, status=PaymentStatusEnum.COMPLETED, tx_ref=tx_ref
+    )
+
+    payload = {
+        "event": "charge.completed",
+        "data": {"id": 5, "tx_ref": tx_ref, "amount": 50000, "currency": "NGN", "status": "successful"},
+    }
+
+    with patch.object(
+        webhook_handlers.flutterwave, "verify_payment", new=AsyncMock()
+    ) as mock_verify, patch(
+        "app.workers.tasks.notification_tasks.send_payment_thank_you"
+    ) as mock_thanks:
+        mock_thanks.delay = MagicMock()
+        _run(webhook_handlers.handle_flutterwave_payment(payload=payload, db=db))
+
+    mock_verify.assert_not_awaited()
+    mock_thanks.delay.assert_not_called()
+
+
+def test_webhook_handler_ignores_unknown_tx_ref(db):
+    """A webhook for a tx_ref we never issued must not create payment records."""
+    from app.integrations import webhook_handlers
+    from app.models.sponsor import SponsorPayment
+
+    payload = {
+        "event": "charge.completed",
+        "data": {"id": 6, "tx_ref": "genesis-attacker-made-this-up", "amount": 999999, "currency": "NGN", "status": "successful"},
+    }
+
+    before = db.query(SponsorPayment).count()
+    with patch.object(
+        webhook_handlers.flutterwave, "verify_payment", new=AsyncMock()
+    ) as mock_verify:
+        _run(webhook_handlers.handle_flutterwave_payment(payload=payload, db=db))
+
+    assert db.query(SponsorPayment).count() == before
+    mock_verify.assert_not_awaited()
+
+
+def test_webhook_handler_amount_mismatch_keeps_payment_pending(db):
+    """If Flutterwave confirms a lower amount than expected, do not credit."""
+    from app.integrations import webhook_handlers
+    from app.models.sponsor import PaymentStatusEnum
+    from tests.utils import create_sponsor, create_sponsor_payment
+
+    sponsor = create_sponsor(db, "Mismatch Sponsor")
+    tx_ref = f"genesis-{sponsor.id}-mismatch0001"
+    payment = create_sponsor_payment(
+        db, sponsor.id, amount=50000.0, status=PaymentStatusEnum.PENDING, tx_ref=tx_ref
+    )
+
+    payload = {
+        "event": "charge.completed",
+        "data": {"id": 7, "tx_ref": tx_ref, "amount": 50000, "currency": "NGN", "status": "successful"},
+    }
+
+    with patch.object(
+        webhook_handlers.flutterwave,
+        "verify_payment",
+        new=AsyncMock(return_value=_fw_verification(tx_ref, 100.0)),  # only ₦100 actually paid
+    ), patch(
+        "app.workers.tasks.notification_tasks.send_payment_thank_you"
+    ) as mock_thanks:
+        mock_thanks.delay = MagicMock()
+        _run(webhook_handlers.handle_flutterwave_payment(payload=payload, db=db))
+
+    assert payment.status == PaymentStatusEnum.PENDING
+    assert "AMOUNT MISMATCH" in (payment.notes or "")
+    mock_thanks.delay.assert_not_called()

@@ -70,7 +70,7 @@ final teamTasksProvider =
       endpoint,
       queryParameters: {
         'page': params['page'] ?? 1,
-        'page_size': 20,
+        'per_page': 20,
         if (params['status'] != null) 'status': params['status'],
       },
     );

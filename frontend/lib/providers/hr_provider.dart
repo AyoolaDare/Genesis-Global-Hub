@@ -124,7 +124,7 @@ class HrNotifier extends AsyncNotifier<WorkersList> {
       ApiEndpoints.workers,
       queryParameters: {
         'page': page,
-        'page_size': 20,
+        'per_page': 20,
         if (search != null && search.isNotEmpty) 'search': search,
       },
     );

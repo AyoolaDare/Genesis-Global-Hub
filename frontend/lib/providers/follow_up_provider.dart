@@ -206,7 +206,7 @@ class FollowUpNotifier extends AsyncNotifier<FollowUpTasksList> {
       ApiEndpoints.followUpTasks,
       queryParameters: {
         'page': page,
-        'page_size': 20,
+        'per_page': 20,
         if (stage != null) 'stage': stage,
         if (today == true) 'due_today': true,
       },

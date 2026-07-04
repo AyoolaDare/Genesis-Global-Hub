@@ -23,9 +23,27 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 
 from tests.conftest import auth_headers, make_token
-from tests.utils import create_member, create_pending_member, create_active_member, create_user
+from tests.utils import (
+    create_active_member,
+    create_department,
+    create_member,
+    create_pending_member,
+    create_user,
+)
 from app.auth.models import UserRole
 from app.models.member import MemberStatusEnum
+from app.models.structure import MemberAssignment
+
+
+def _assign_to_department(db, member, department):
+    assignment = MemberAssignment(
+        member_id=member.id,
+        assignment_type="DEPARTMENT",
+        assignment_id=department.id,
+    )
+    db.add(assignment)
+    db.flush()
+    return assignment
 
 
 # ── Create Member: Status Rules ────────────────────────────────────────────────
@@ -425,3 +443,126 @@ def test_member_role_cannot_list_pending(client, db, member_user, member_token):
         headers=auth_headers(member_token),
     )
     assert response.status_code == 403
+
+
+def test_department_head_cannot_get_member_outside_scope(client, db):
+    """Scoped leaders must not fetch arbitrary member details by ID."""
+    own_dept = create_department(db, "Own Detail Scope")
+    foreign_dept = create_department(db, "Foreign Detail Scope")
+    head = create_user(db, "detail-scope-head@test.com", UserRole.DEPARTMENT_HEAD)
+    outside = create_active_member(db, "Outside Detail Member")
+    _assign_to_department(db, outside, foreign_dept)
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.get(
+        f"/api/v1/members/{outside.id}",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 403
+
+
+def test_department_head_cannot_update_member_outside_scope(client, db):
+    """Scoped leaders must not update members outside their assigned entities."""
+    own_dept = create_department(db, "Own Update Scope")
+    foreign_dept = create_department(db, "Foreign Update Scope")
+    head = create_user(db, "update-scope-head@test.com", UserRole.DEPARTMENT_HEAD)
+    outside = create_active_member(db, "Outside Update Member")
+    _assign_to_department(db, outside, foreign_dept)
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.put(
+        f"/api/v1/members/{outside.id}",
+        json={"full_name": "Illicit Update"},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 403
+
+
+def test_department_head_cannot_approve_member_outside_scope(client, db):
+    """Approval by scoped leaders must be limited to members in their scope."""
+    own_dept = create_department(db, "Own Approval Scope")
+    foreign_dept = create_department(db, "Foreign Approval Scope")
+    head = create_user(db, "approval-scope-head@test.com", UserRole.DEPARTMENT_HEAD)
+    outside = create_pending_member(db, "Outside Approval Member")
+    _assign_to_department(db, outside, foreign_dept)
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.post(
+        f"/api/v1/members/{outside.id}/approve",
+        json={},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 403
+
+
+def test_department_head_search_is_limited_to_scope(client, db):
+    """Member search must not bypass the scoped member list filter."""
+    own_dept = create_department(db, "Own Search Scope")
+    foreign_dept = create_department(db, "Foreign Search Scope")
+    head = create_user(db, "search-scope-head@test.com", UserRole.DEPARTMENT_HEAD)
+    inside = create_active_member(db, "Shared Search Name Inside")
+    outside = create_active_member(db, "Shared Search Name Outside")
+    _assign_to_department(db, inside, own_dept)
+    _assign_to_department(db, outside, foreign_dept)
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.post(
+        "/api/v1/members/search",
+        json={"query": "Shared Search Name"},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()["data"]}
+    assert str(inside.id) in ids
+    assert str(outside.id) not in ids
+
+
+def test_department_head_pending_list_is_limited_to_scope(client, db):
+    """Pending approvals must not expose pending members outside scope."""
+    own_dept = create_department(db, "Own Pending Scope")
+    foreign_dept = create_department(db, "Foreign Pending Scope")
+    head = create_user(db, "pending-scope-head@test.com", UserRole.DEPARTMENT_HEAD)
+    inside = create_pending_member(db, "Inside Pending Scope")
+    outside = create_pending_member(db, "Outside Pending Scope")
+    _assign_to_department(db, inside, own_dept)
+    _assign_to_department(db, outside, foreign_dept)
+    token = make_token(
+        str(head.id),
+        head.email,
+        "DEPARTMENT_HEAD",
+        scope={"departments": [str(own_dept.id)], "teams": [], "groups": []},
+    )
+
+    response = client.get(
+        "/api/v1/members/pending",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()["data"]}
+    assert str(inside.id) in ids
+    assert str(outside.id) not in ids

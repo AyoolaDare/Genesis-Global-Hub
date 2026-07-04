@@ -363,6 +363,151 @@ class ScopeFilter:
         )
 
 
+# ── Entity / Member Scope Enforcement ─────────────────────────────────────────
+
+_LEADER_ROLES = (UserRole.DEPARTMENT_HEAD, UserRole.TEAM_LEADER, UserRole.GROUP_LEADER)
+_GLOBAL_STRUCTURE_ROLES = (UserRole.SUPER_ADMIN, UserRole.PASTOR)
+
+
+def get_effective_scope_entities(request: Request, db: Session) -> dict[str, set]:
+    """
+    Expand the JWT scope into the full set of entities the user may access,
+    following the org hierarchy: a department head also covers the teams and
+    groups inside their department; a team leader covers the groups in
+    their team.
+
+    Returns:
+        Dict with keys "departments", "teams", "groups" (sets of UUIDs).
+    """
+    from app.models.structure import Group, Team
+
+    payload = getattr(request.state, "token_payload", {})
+    scope: dict = payload.get("scope", {}) or {}
+
+    def _to_uuid_set(values: list) -> set:
+        out: set = set()
+        for value in values or []:
+            try:
+                out.add(uuid.UUID(str(value)))
+            except ValueError:
+                continue
+        return out
+
+    dept_ids = _to_uuid_set(scope.get("departments", []))
+    team_ids = _to_uuid_set(scope.get("teams", []))
+    group_ids = _to_uuid_set(scope.get("groups", []))
+
+    if dept_ids:
+        team_rows = db.query(Team.id).filter(
+            Team.department_id.in_(dept_ids), Team.deleted_at.is_(None)
+        ).all()
+        team_ids |= {row[0] for row in team_rows}
+
+        group_rows = db.query(Group.id).filter(
+            Group.department_id.in_(dept_ids), Group.deleted_at.is_(None)
+        ).all()
+        group_ids |= {row[0] for row in group_rows}
+
+    if team_ids:
+        group_rows = db.query(Group.id).filter(
+            Group.team_id.in_(team_ids), Group.deleted_at.is_(None)
+        ).all()
+        group_ids |= {row[0] for row in group_rows}
+
+    return {"departments": dept_ids, "teams": team_ids, "groups": group_ids}
+
+
+def ensure_entity_scope(
+    entity_type: str,
+    entity_id: uuid.UUID,
+    user: AppUser,
+    request: Request,
+    db: Session,
+) -> None:
+    """
+    Raise ScopeViolation unless the user may access the given
+    DEPARTMENT/TEAM/GROUP entity. SUPER_ADMIN and PASTOR are global;
+    leaders are checked against their (hierarchy-expanded) scope;
+    every other role is denied.
+    """
+    if user.role in _GLOBAL_STRUCTURE_ROLES:
+        return
+    if user.role not in _LEADER_ROLES:
+        raise ScopeViolation(message="Your role cannot access this resource.")
+
+    normalized = (entity_type or "").upper().rstrip("S")
+    key = {
+        "DEPARTMENT": "departments",
+        "TEAM": "teams",
+        "GROUP": "groups",
+    }.get(normalized)
+    if key is None:
+        raise ScopeViolation(message="Unknown entity type.")
+
+    effective = get_effective_scope_entities(request, db)
+    if entity_id not in effective[key]:
+        raise ScopeViolation(
+            message="You are not authorised to access this resource."
+        )
+
+
+def ensure_member_scope(
+    member_id: uuid.UUID,
+    user: AppUser,
+    request: Request,
+    db: Session,
+) -> None:
+    """
+    Raise ScopeViolation unless the user may access the given member's
+    records: SUPER_ADMIN/PASTOR globally, leaders only when the member is
+    assigned to a department/team/group within their scope.
+    """
+    if user.role in _GLOBAL_STRUCTURE_ROLES:
+        return
+    if user.role not in _LEADER_ROLES:
+        raise ScopeViolation(message="Your role cannot access member records.")
+
+    from sqlalchemy import and_, or_
+    from app.models.structure import MemberAssignment
+
+    effective = get_effective_scope_entities(request, db)
+    conditions = []
+    if effective["departments"]:
+        conditions.append(
+            and_(
+                MemberAssignment.assignment_type == "DEPARTMENT",
+                MemberAssignment.assignment_id.in_(effective["departments"]),
+            )
+        )
+    if effective["teams"]:
+        conditions.append(
+            and_(
+                MemberAssignment.assignment_type == "TEAM",
+                MemberAssignment.assignment_id.in_(effective["teams"]),
+            )
+        )
+    if effective["groups"]:
+        conditions.append(
+            and_(
+                MemberAssignment.assignment_type == "GROUP",
+                MemberAssignment.assignment_id.in_(effective["groups"]),
+            )
+        )
+
+    if not conditions:
+        raise ScopeViolation(message="You have no assigned scope.")
+
+    match = (
+        db.query(MemberAssignment.id)
+        .filter(MemberAssignment.member_id == member_id, or_(*conditions))
+        .first()
+    )
+    if match is None:
+        raise ScopeViolation(
+            message="You are not authorised to access this member's records."
+        )
+
+
 # ── Convenience: Admin-Only Dependency ────────────────────────────────────────
 
 require_super_admin = require_role("SUPER_ADMIN")

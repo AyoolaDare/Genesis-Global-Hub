@@ -179,6 +179,15 @@ def send_payment_thank_you(payment_id: str) -> dict:
                 logger.warning("send_payment_thank_you: payment not found: %s", payment_id)
                 return result
 
+            # Idempotency: webhooks can be re-delivered — never thank twice
+            if payment.thank_you_sent_at is not None:
+                result["success"] = True
+                result["message"] = "Thank-you already sent — skipping duplicate"
+                logger.info(
+                    "send_payment_thank_you: already sent for payment=%s — skipping", payment_id
+                )
+                return result
+
             sponsor: Optional[Sponsor] = db.query(Sponsor).filter(
                 Sponsor.id == payment.sponsor_id,
                 Sponsor.deleted_at.is_(None),
@@ -284,7 +293,7 @@ def send_payment_reminder(sponsor_id: str) -> dict:
         Dict with keys: success, sponsor_id, message.
     """
     from app.integrations.termii import termii
-    from app.models.sponsor import Sponsor
+    from app.models.sponsor import PaymentStatusEnum, Sponsor, SponsorPayment
     from datetime import datetime as dt
 
     result = {"success": False, "sponsor_id": sponsor_id, "message": ""}
@@ -303,12 +312,25 @@ def send_payment_reminder(sponsor_id: str) -> dict:
                 result["message"] = "Sponsor has no phone number"
                 return result
 
+            # Due-date tracking lives on the latest completed payment record
+            latest_payment = (
+                db.query(SponsorPayment)
+                .filter(
+                    SponsorPayment.sponsor_id == sponsor.id,
+                    SponsorPayment.deleted_at.is_(None),
+                    SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+                    SponsorPayment.next_due_date.isnot(None),
+                )
+                .order_by(SponsorPayment.payment_date.desc().nulls_last())
+                .first()
+            )
+
             due_date_str = (
-                sponsor.next_due_date.strftime("%d %b %Y")
-                if sponsor.next_due_date
+                latest_payment.next_due_date.strftime("%d %b %Y")
+                if latest_payment
                 else "soon"
             )
-            amount_str = f"{sponsor.amount_per_period:,.0f}"
+            amount_str = f"{float(sponsor.amount):,.0f}"
             first_name = sponsor.full_name.split()[0]
 
             _run_async(
@@ -324,8 +346,9 @@ def send_payment_reminder(sponsor_id: str) -> dict:
                 )
             )
 
-            sponsor.reminder_sent_at = dt.now(timezone.utc)
-            db.flush()
+            if latest_payment:
+                latest_payment.reminder_sent_at = dt.now(timezone.utc)
+                db.flush()
 
         result["success"] = True
         result["message"] = "Payment reminder sent"
@@ -427,15 +450,93 @@ def send_admin_notification(
         return result
 
 
+def _resolve_queue_recipient(db, recipient_type: str, recipient_id) -> tuple:
+    """
+    Resolve a notification_queue recipient to (name, phone, email).
+    Returns (None, None, None) when the recipient cannot be found.
+    """
+    rtype = (recipient_type or "").upper()
+
+    if rtype == "SPONSOR":
+        from app.models.sponsor import Sponsor
+        sponsor = db.query(Sponsor).filter(
+            Sponsor.id == recipient_id, Sponsor.deleted_at.is_(None)
+        ).first()
+        if sponsor:
+            return sponsor.full_name, sponsor.phone, sponsor.email
+
+    elif rtype == "MEMBER":
+        from app.models.member import MemberModel
+        member = db.query(MemberModel).filter(
+            MemberModel.id == recipient_id, MemberModel.deleted_at.is_(None)
+        ).first()
+        if member:
+            return member.full_name, member.phone, member.email
+
+    elif rtype == "USER":
+        from app.auth.models import AppUser
+        user = db.get(AppUser, recipient_id)
+        if user:
+            name = user.member.full_name if getattr(user, "member", None) else user.email
+            return name, None, user.email
+
+    return None, None, None
+
+
+def _render_queue_message(template_key: str, payload: dict, recipient_name: str) -> tuple:
+    """
+    Render a queued notification into (subject, message_text).
+
+    Known template keys are rendered from the payload's template variables;
+    otherwise the payload's explicit subject/message fields are used as-is.
+    """
+    from app.integrations.termii import TEMPLATES
+
+    key = (template_key or "").upper()
+    display_name = (payload.get("sponsor_name") or recipient_name or "Friend").split()[0]
+
+    if key == "PAYMENT_THANK_YOU":
+        amount = float(payload.get("amount", 0))
+        message = TEMPLATES["payment_thank_you"].format(
+            name=display_name, amount=f"{amount:,.0f}"
+        )
+        return "Thank You for Your Generosity — Genesis Global", message
+
+    if key == "PAYMENT_REMINDER":
+        amount = float(payload.get("amount", 0))
+        message = TEMPLATES["payment_reminder"].format(
+            name=display_name,
+            amount=f"{amount:,.0f}",
+            date=payload.get("date", "soon"),
+        )
+        return "Sponsorship Payment Reminder — Genesis Global", message
+
+    if key == "WELCOME_MEMBER":
+        message = TEMPLATES["welcome_member"].format(name=display_name)
+        return "Welcome to Genesis Global!", message
+
+    # Fallback: payload carries a pre-rendered message
+    return (
+        payload.get("subject", "Genesis Global Notification"),
+        payload.get("message", ""),
+    )
+
+
 @celery_app.task(name="process_notification_queue", acks_late=True)
 def process_notification_queue() -> dict:
     """
-    Process all PENDING items in the notification_queue table.
+    Process due PENDING items in the notification_queue table.
 
     For each pending item:
+      - Resolve the recipient's contact info from recipient_type/recipient_id
+        (falls back to explicit phone/email in the payload)
+      - Render the message from template_key + payload
       - Route to the appropriate channel (SMS, WhatsApp, or Email)
       - Update status to SENT or FAILED
-      - Increment retry_count on failure (skip after 5 retries)
+      - Increment retry_count on failure (marked FAILED after 5 retries)
+
+    Rows are claimed with SELECT ... FOR UPDATE SKIP LOCKED so overlapping
+    runs never double-send (a no-op on SQLite in tests).
 
     Returns:
         Dict with keys: processed, sent, failed.
@@ -444,6 +545,7 @@ def process_notification_queue() -> dict:
     from app.integrations.termii import termii
 
     stats = {"processed": 0, "sent": 0, "failed": 0}
+    now = datetime.now(timezone.utc)
 
     try:
         with get_db_context() as db:
@@ -452,8 +554,11 @@ def process_notification_queue() -> dict:
                 .filter(
                     NotificationQueue.status == "PENDING",
                     NotificationQueue.retry_count < 5,
+                    NotificationQueue.scheduled_for <= now,
                 )
+                .order_by(NotificationQueue.scheduled_for)
                 .limit(100)  # Process max 100 per run to avoid timeout
+                .with_for_update(skip_locked=True)
                 .all()
             )
 
@@ -466,29 +571,40 @@ def process_notification_queue() -> dict:
                     payload: dict = item.payload or {}
                     channel = item.channel.lower()
 
-                    if channel in ("sms", "generic", "dnd"):
-                        phone = payload.get("phone", "")
-                        message = payload.get("message", "")
-                        if phone and message:
+                    name, phone, email = _resolve_queue_recipient(
+                        db, item.recipient_type, item.recipient_id
+                    )
+                    # Explicit contact details in the payload win
+                    phone = payload.get("phone") or phone
+                    email = payload.get("email") or email
+
+                    subject, message = _render_queue_message(
+                        item.template_key, payload, name
+                    )
+
+                    if not message:
+                        error_msg = f"No message content for template '{item.template_key}'"
+
+                    elif channel in ("sms", "generic", "dnd"):
+                        if phone:
                             _run_async(
                                 termii.send_sms(
                                     to=phone, message=message, channel="generic"
                                 )
                             )
                             sent = True
+                        else:
+                            error_msg = "Recipient has no phone number"
 
                     elif channel == "whatsapp":
-                        phone = payload.get("phone", "")
-                        message = payload.get("message", "")
-                        if phone and message:
+                        if phone:
                             _run_async(termii.send_whatsapp(to=phone, message=message))
                             sent = True
+                        else:
+                            error_msg = "Recipient has no phone number"
 
                     elif channel == "email":
-                        to_email = payload.get("email", "")
-                        subject = payload.get("subject", "Genesis Global Notification")
-                        message = payload.get("message", "")
-                        if to_email and message:
+                        if email:
                             from app.integrations.brevo import BrevoClient
                             brevo = BrevoClient()
                             html_content = (
@@ -497,11 +613,15 @@ def process_notification_queue() -> dict:
                                 "</body></html>"
                             )
                             sent = brevo.send_email(
-                                to_email=to_email,
+                                to_email=email,
                                 subject=subject,
                                 html_content=html_content,
                                 text_content=message,
                             )
+                            if not sent:
+                                error_msg = "Email provider rejected the message"
+                        else:
+                            error_msg = "Recipient has no email address"
 
                     else:
                         logger.warning(
@@ -530,6 +650,14 @@ def process_notification_queue() -> dict:
                     item.error_message = error_msg
                     if item.retry_count >= 5:
                         item.status = "FAILED"
+                        logger.error(
+                            "process_notification_queue: item %s permanently FAILED "
+                            "(template=%s channel=%s): %s",
+                            item.id,
+                            item.template_key,
+                            item.channel,
+                            error_msg,
+                        )
                     stats["failed"] += 1
 
             db.flush()

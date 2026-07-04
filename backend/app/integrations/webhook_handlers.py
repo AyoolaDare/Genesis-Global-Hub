@@ -6,7 +6,6 @@ These functions are called by Celery tasks so that webhook endpoints
 return 200 immediately and processing happens asynchronously.
 """
 import logging
-import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -41,15 +40,16 @@ async def handle_flutterwave_payment(payload: dict, db: Session) -> None:
     }
 
     Steps:
-      1. Validate event type is "charge.completed"
-      2. Validate status is "successful"
-      3. Extract sponsor_id from tx_ref (format: "genesis-{sponsor_id}-{suffix}")
-      4. Load sponsor from database
-      5. Locate pending SponsorPayment with matching tx_ref
-      6. Update payment: status=COMPLETED, flutterwave_tx_id, payment_date
-      7. Calculate and update next_due_date on sponsor
-      8. Queue thank-you notification to sponsor
-      9. Queue notification to finance admin
+      1. Validate event type is "charge.completed" and status is "successful"
+      2. Locate the pending SponsorPayment by tx_ref (created at initiation)
+      3. Idempotency guard: already-COMPLETED payments are skipped entirely
+      4. RE-VERIFY the transaction with Flutterwave's API (never trust the
+         webhook payload's amount/status alone)
+      5. Compare verified amount/currency against the expected payment
+      6. Update payment: status=COMPLETED, flutterwave_tx_id, payment_date,
+         next_due_date
+      7. Queue thank-you notification to sponsor
+      8. Queue notification to finance admin
 
     Args:
         payload: Parsed JSON webhook payload dict.
@@ -72,99 +72,111 @@ async def handle_flutterwave_payment(payload: dict, db: Session) -> None:
         return
 
     tx_ref: Optional[str] = data.get("tx_ref")
-    flutterwave_tx_id: Optional[str] = str(data.get("id", ""))
-    amount: float = float(data.get("amount", 0))
-    currency: str = data.get("currency", "NGN")
+    webhook_tx_id: Optional[str] = str(data.get("id", ""))
 
     if not tx_ref:
         logger.error("Flutterwave webhook: missing tx_ref in payload")
         return
 
-    # Extract sponsor_id from tx_ref format: "genesis-{sponsor_id}-{suffix}"
-    parts = tx_ref.split("-")
-    # Format: genesis-{uuid4-part1}-{uuid4-part2}-...-{suffix}
-    # The sponsor_id is a UUID which has 5 parts; tx_ref is genesis + 5 UUID parts + suffix
-    # So parts[1:6] form the UUID, remainder is our suffix
-    sponsor_id_str: Optional[str] = None
-    try:
-        if len(parts) >= 7 and parts[0] == "genesis":
-            # Reconstruct UUID: parts[1]-parts[2]-parts[3]-parts[4]-parts[5]
-            sponsor_id_str = "-".join(parts[1:6])
-            uuid.UUID(sponsor_id_str)  # validate
-        else:
-            logger.error(
-                "Flutterwave webhook: could not parse sponsor_id from tx_ref='%s'", tx_ref
-            )
-            return
-    except (ValueError, IndexError):
+    # Locate the pending SponsorPayment created at initiation time.
+    # We deliberately do NOT create payment records for unknown tx_refs —
+    # an attacker-supplied reference must never mint revenue rows.
+    payment: Optional[SponsorPayment] = (
+        db.query(SponsorPayment)
+        .filter(SponsorPayment.tx_ref == tx_ref, SponsorPayment.deleted_at.is_(None))
+        .first()
+    )
+    if payment is None:
         logger.error(
-            "Flutterwave webhook: invalid UUID in tx_ref='%s'", tx_ref
+            "Flutterwave webhook: no local payment record for tx_ref=%s — ignoring", tx_ref
         )
         return
 
-    # Load sponsor from database
-    try:
-        sponsor_uuid = uuid.UUID(sponsor_id_str)
-    except ValueError:
-        logger.error("Flutterwave webhook: invalid sponsor UUID '%s'", sponsor_id_str)
+    # Idempotency: Flutterwave retries webhooks; never credit or notify twice
+    if payment.status == PaymentStatusEnum.COMPLETED:
+        logger.info(
+            "Flutterwave webhook: payment tx_ref=%s already COMPLETED — skipping", tx_ref
+        )
         return
 
     sponsor: Optional[Sponsor] = (
         db.query(Sponsor)
-        .filter(Sponsor.id == sponsor_uuid, Sponsor.deleted_at.is_(None))
+        .filter(Sponsor.id == payment.sponsor_id, Sponsor.deleted_at.is_(None))
         .first()
     )
     if not sponsor:
         logger.error(
-            "Flutterwave webhook: sponsor not found for id=%s (tx_ref=%s)",
-            sponsor_id_str,
-            tx_ref,
+            "Flutterwave webhook: sponsor not found for payment tx_ref=%s", tx_ref
         )
         return
 
-    # Find the pending SponsorPayment
-    payment: Optional[SponsorPayment] = (
-        db.query(SponsorPayment)
-        .filter(SponsorPayment.tx_ref == tx_ref)
-        .first()
-    )
+    # Re-verify with Flutterwave before crediting — the webhook body is not
+    # proof of payment. GET /transactions/{id}/verify is the source of truth.
+    try:
+        verification = await flutterwave.verify_payment(webhook_tx_id)
+    except Exception as exc:
+        logger.error(
+            "Flutterwave webhook: verification API call failed for tx_ref=%s: %s — "
+            "raising so Celery retries",
+            tx_ref,
+            exc,
+        )
+        raise
 
-    if payment is None:
-        # Create a new payment record if somehow not pre-created
+    verified = verification.get("data") or {}
+    verified_status = verified.get("status", "")
+    verified_tx_ref = verified.get("tx_ref", "")
+    verified_amount = float(verified.get("amount", 0))
+    verified_currency = verified.get("currency", "")
+
+    if verified_status != "successful" or verified_tx_ref != tx_ref:
         logger.warning(
-            "Flutterwave webhook: no pending payment found for tx_ref=%s; creating one", tx_ref
+            "Flutterwave webhook: verification mismatch tx_ref=%s (verified status=%s ref=%s)",
+            tx_ref,
+            verified_status,
+            verified_tx_ref,
         )
-        payment = SponsorPayment(
-            sponsor_id=sponsor.id,
-            tx_ref=tx_ref,
-            amount=amount,
-            currency=currency,
-            status=PaymentStatusEnum.PENDING,
-        )
-        db.add(payment)
+        return
 
-    # Update payment to COMPLETED
+    expected_amount = float(payment.amount)
+    if verified_amount + 0.01 < expected_amount or verified_currency != "NGN":
+        payment.flutterwave_response = verified
+        payment.notes = (
+            f"AMOUNT MISMATCH: expected NGN {expected_amount:,.2f}, "
+            f"Flutterwave confirmed {verified_currency} {verified_amount:,.2f}. "
+            f"Manual review required."
+        )
+        db.flush()
+        logger.warning(
+            "Flutterwave webhook: amount/currency mismatch tx_ref=%s expected=%s got=%s %s",
+            tx_ref,
+            expected_amount,
+            verified_currency,
+            verified_amount,
+        )
+        return
+
+    # Credit the payment
     payment.status = PaymentStatusEnum.COMPLETED
-    payment.flutterwave_tx_id = flutterwave_tx_id
+    payment.flutterwave_tx_id = webhook_tx_id
     payment.payment_date = datetime.now(timezone.utc)
-    payment.flutterwave_response = data
-    payment.amount = amount
-    payment.currency = currency
+    payment.flutterwave_response = verified
+    payment.amount = verified_amount
 
-    # Calculate and update next due date on sponsor
+    # Next due date lives on the payment record (sponsors table has no such column)
     from datetime import date as date_type
     next_due = flutterwave.calculate_next_due_date(
         sponsor.sponsorship_tier.value, date_type.today()
     )
-    sponsor.next_due_date = next_due
+    payment.next_due_date = next_due
 
     db.flush()
 
     logger.info(
         "Flutterwave webhook: payment completed — sponsor=%s tx_ref=%s amount=%s next_due=%s",
-        sponsor_id_str,
+        sponsor.id,
         tx_ref,
-        amount,
+        verified_amount,
         next_due,
     )
 
@@ -186,10 +198,10 @@ async def handle_flutterwave_payment(payload: dict, db: Session) -> None:
             admin_email=None,  # The task will look up the finance admin email
             subject=f"Sponsorship Payment Received — {sponsor.full_name}",
             message=(
-                f"A sponsorship payment of {currency} {amount:,.2f} has been received.\n"
+                f"A sponsorship payment of {verified_currency} {verified_amount:,.2f} has been received.\n"
                 f"Sponsor: {sponsor.full_name}\n"
                 f"Transaction Reference: {tx_ref}\n"
-                f"Flutterwave TX ID: {flutterwave_tx_id}\n"
+                f"Flutterwave TX ID: {webhook_tx_id}\n"
                 f"Next Due Date: {next_due}"
             ),
         )
@@ -262,14 +274,28 @@ async def handle_payment_verification(tx_ref: str, db: Session) -> dict:
             result["sponsor_id"] = str(payment.sponsor_id)
 
             if fw_status == "successful" and payment.status != PaymentStatusEnum.COMPLETED:
+                expected_amount = float(payment.amount)
+                if fw_amount + 0.01 < expected_amount or fw_currency != "NGN":
+                    payment.flutterwave_response = tx_data
+                    payment.notes = (
+                        f"AMOUNT MISMATCH: expected NGN {expected_amount:,.2f}, "
+                        f"Flutterwave confirmed {fw_currency} {fw_amount:,.2f}. "
+                        f"Manual review required."
+                    )
+                    db.flush()
+                    result["status"] = "pending"
+                    result["message"] = (
+                        "Payment amount could not be confirmed. Our team will review it."
+                    )
+                    return result
+
                 payment.status = PaymentStatusEnum.COMPLETED
                 payment.flutterwave_tx_id = fw_tx_id
                 payment.payment_date = datetime.now(timezone.utc)
                 payment.flutterwave_response = tx_data
                 payment.amount = fw_amount
-                payment.currency = fw_currency
 
-                # Update sponsor next_due_date
+                # Next due date lives on the payment record
                 sponsor: Optional[Sponsor] = (
                     db.query(Sponsor)
                     .filter(Sponsor.id == payment.sponsor_id)
@@ -277,10 +303,9 @@ async def handle_payment_verification(tx_ref: str, db: Session) -> dict:
                 )
                 if sponsor:
                     from datetime import date as date_type
-                    next_due = flutterwave.calculate_next_due_date(
+                    payment.next_due_date = flutterwave.calculate_next_due_date(
                         sponsor.sponsorship_tier.value, date_type.today()
                     )
-                    sponsor.next_due_date = next_due
 
                 db.flush()
 

@@ -272,7 +272,14 @@ def check_auth_rate_limit(ip_address: str) -> None:
     except RateLimitExceeded:
         raise
     except Exception as exc:
-        logger.warning("Rate limit check failed (failing open): %s", exc)
+        if settings.RATE_LIMIT_FAIL_OPEN:
+            logger.warning("Auth rate limit check failed (failing open): %s", exc)
+        else:
+            from app.core.exceptions import ServiceUnavailable
+            logger.error("Auth rate limit check failed (failing CLOSED): %s", exc)
+            raise ServiceUnavailable(
+                message="Authentication is temporarily unavailable. Please try again shortly."
+            )
 
 
 def record_failed_auth(ip_address: str) -> None:
