@@ -11,13 +11,19 @@ from datetime import date, datetime, time, timezone
 from typing import Optional
 
 from sqlalchemy import func, or_, extract
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser
 from app.config import settings
 from app.core.exceptions import NotFound, ServiceUnavailable
 from app.integrations.flutterwave import FlutterwaveClient
-from app.models.sponsor import PaymentStatusEnum, Sponsor, SponsorPayment
+from app.models.sponsor import (
+    PaymentStatusEnum,
+    PreferredChannelEnum,
+    Sponsor,
+    SponsorPayment,
+)
 from app.models.member import MemberModel
 from app.schemas.sponsor import SponsorCreate, SponsorPaymentCreate, SponsorUpdate
 from app.services.dedup_service import normalize_phone
@@ -26,6 +32,35 @@ from app.services.notification_service import queue_notification
 logger = logging.getLogger(__name__)
 
 flutterwave = FlutterwaveClient()
+
+
+def _rollback_after_dashboard_error(db: Session, section: str, exc: Exception) -> None:
+    logger.exception("Finance dashboard section '%s' failed: %s", section, exc)
+    try:
+        db.rollback()
+    except Exception:
+        logger.exception("Finance dashboard rollback failed after '%s'", section)
+
+
+def _safe_dashboard_scalar(
+    db: Session,
+    section: str,
+    query_factory,
+    default=0,
+):
+    try:
+        return query_factory().scalar() or default
+    except SQLAlchemyError as exc:
+        _rollback_after_dashboard_error(db, section, exc)
+        return default
+
+
+def _safe_dashboard_rows(db: Session, section: str, query_factory) -> list:
+    try:
+        return query_factory().all()
+    except SQLAlchemyError as exc:
+        _rollback_after_dashboard_error(db, section, exc)
+        return []
 
 
 # ── Sponsor Service ────────────────────────────────────────────────────────────
@@ -94,7 +129,7 @@ def create_sponsor(
         email=str(data.email).lower() if data.email else None,
         sponsorship_tier=data.sponsorship_tier,
         amount=data.amount,
-        preferred_channel=data.preferred_channel,
+        preferred_channel=data.preferred_channel or PreferredChannelEnum.SMS,
         member_link_id=member_link_id,  # backend-only, never returned
         is_active=data.is_active,
         created_by=current_user.id,
@@ -393,96 +428,135 @@ def get_finance_dashboard(db: Session) -> dict:
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    total_sponsors = db.query(func.count(Sponsor.id)).filter(
-        Sponsor.deleted_at.is_(None)
-    ).scalar() or 0
+    total_sponsors = _safe_dashboard_scalar(
+        db,
+        "total_sponsors",
+        lambda: db.query(func.count(Sponsor.id)).filter(Sponsor.deleted_at.is_(None)),
+        0,
+    )
 
-    active_sponsors = db.query(func.count(Sponsor.id)).filter(
-        Sponsor.deleted_at.is_(None),
-        Sponsor.is_active.is_(True),
-    ).scalar() or 0
-
-    monthly_revenue = db.query(func.coalesce(func.sum(SponsorPayment.amount), 0)).filter(
-        SponsorPayment.deleted_at.is_(None),
-        SponsorPayment.status == PaymentStatusEnum.COMPLETED,
-        SponsorPayment.payment_date >= month_start,
-    ).scalar() or 0.0
-
-    annual_revenue = db.query(func.coalesce(func.sum(SponsorPayment.amount), 0)).filter(
-        SponsorPayment.deleted_at.is_(None),
-        SponsorPayment.status == PaymentStatusEnum.COMPLETED,
-        SponsorPayment.payment_date >= year_start,
-    ).scalar() or 0.0
-
-    payments_this_month = db.query(func.count(SponsorPayment.id)).filter(
-        SponsorPayment.deleted_at.is_(None),
-        SponsorPayment.status == PaymentStatusEnum.COMPLETED,
-        SponsorPayment.payment_date >= month_start,
-    ).scalar() or 0
-
-    # Overdue sponsors (next_due_date is past and not yet paid)
-    overdue = (
-        db.query(Sponsor, SponsorPayment)
-        .outerjoin(
-            SponsorPayment,
-            (SponsorPayment.sponsor_id == Sponsor.id)
-            & (SponsorPayment.status == PaymentStatusEnum.COMPLETED)
-            & (SponsorPayment.deleted_at.is_(None)),
-        )
-        .filter(
+    active_sponsors = _safe_dashboard_scalar(
+        db,
+        "active_sponsors",
+        lambda: db.query(func.count(Sponsor.id)).filter(
             Sponsor.deleted_at.is_(None),
             Sponsor.is_active.is_(True),
-            SponsorPayment.next_due_date.isnot(None),
-            SponsorPayment.next_due_date < now.date(),
-        )
-        .order_by(SponsorPayment.next_due_date.asc())
-        .limit(20)
-        .all()
+        ),
+        0,
+    )
+
+    monthly_revenue = _safe_dashboard_scalar(
+        db,
+        "monthly_revenue",
+        lambda: db.query(func.coalesce(func.sum(SponsorPayment.amount), 0)).filter(
+            SponsorPayment.deleted_at.is_(None),
+            SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+            SponsorPayment.payment_date >= month_start,
+        ),
+        0.0,
+    )
+
+    annual_revenue = _safe_dashboard_scalar(
+        db,
+        "annual_revenue",
+        lambda: db.query(func.coalesce(func.sum(SponsorPayment.amount), 0)).filter(
+            SponsorPayment.deleted_at.is_(None),
+            SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+            SponsorPayment.payment_date >= year_start,
+        ),
+        0.0,
+    )
+
+    payments_this_month = _safe_dashboard_scalar(
+        db,
+        "payments_this_month",
+        lambda: db.query(func.count(SponsorPayment.id)).filter(
+            SponsorPayment.deleted_at.is_(None),
+            SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+            SponsorPayment.payment_date >= month_start,
+        ),
+        0,
+    )
+
+    # Overdue sponsors (next_due_date is past and not yet paid)
+    overdue = _safe_dashboard_rows(
+        db,
+        "overdue_sponsors",
+        lambda: (
+            db.query(Sponsor, SponsorPayment)
+            .outerjoin(
+                SponsorPayment,
+                (SponsorPayment.sponsor_id == Sponsor.id)
+                & (SponsorPayment.status == PaymentStatusEnum.COMPLETED)
+                & (SponsorPayment.deleted_at.is_(None)),
+            )
+            .filter(
+                Sponsor.deleted_at.is_(None),
+                Sponsor.is_active.is_(True),
+                SponsorPayment.next_due_date.isnot(None),
+                SponsorPayment.next_due_date < now.date(),
+            )
+            .order_by(SponsorPayment.next_due_date.asc())
+            .limit(20)
+        ),
     )
 
     overdue_list = []
-    for sponsor, payment in overdue:
-        days_overdue = 0
-        if payment and payment.next_due_date:
-            days_overdue = (now.date() - payment.next_due_date).days
-        overdue_list.append({
-            "id": sponsor.id,
-            "name": sponsor.full_name,
-            "full_name": sponsor.full_name,
-            "phone": sponsor.phone,
-            "tier": getattr(sponsor.sponsorship_tier, "value", sponsor.sponsorship_tier),
-            "sponsorship_tier": sponsor.sponsorship_tier,
-            "amount": float(sponsor.amount),
-            "days_overdue": days_overdue,
-            "last_payment_date": payment.payment_date if payment else None,
-            "next_due_date": payment.next_due_date if payment else None,
-        })
+    try:
+        for sponsor, payment in overdue:
+            days_overdue = 0
+            if payment and payment.next_due_date:
+                days_overdue = (now.date() - payment.next_due_date).days
+            overdue_list.append({
+                "id": sponsor.id,
+                "name": sponsor.full_name,
+                "full_name": sponsor.full_name,
+                "phone": sponsor.phone,
+                "tier": getattr(sponsor.sponsorship_tier, "value", sponsor.sponsorship_tier),
+                "sponsorship_tier": getattr(
+                    sponsor.sponsorship_tier, "value", sponsor.sponsorship_tier
+                ),
+                "amount": float(sponsor.amount),
+                "days_overdue": days_overdue,
+                "last_payment_date": payment.payment_date if payment else None,
+                "next_due_date": payment.next_due_date if payment else None,
+            })
+    except Exception as exc:
+        _rollback_after_dashboard_error(db, "overdue_sponsors_serialize", exc)
+        overdue_list = []
 
-    recent_payments = (
-        db.query(SponsorPayment, Sponsor)
-        .join(Sponsor, Sponsor.id == SponsorPayment.sponsor_id)
-        .filter(
-            SponsorPayment.deleted_at.is_(None),
-            Sponsor.deleted_at.is_(None),
-            SponsorPayment.status == PaymentStatusEnum.COMPLETED,
-        )
-        .order_by(SponsorPayment.payment_date.desc().nulls_last())
-        .limit(8)
-        .all()
+    recent_payments = _safe_dashboard_rows(
+        db,
+        "recent_payments",
+        lambda: (
+            db.query(SponsorPayment, Sponsor)
+            .join(Sponsor, Sponsor.id == SponsorPayment.sponsor_id)
+            .filter(
+                SponsorPayment.deleted_at.is_(None),
+                Sponsor.deleted_at.is_(None),
+                SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+            )
+            .order_by(SponsorPayment.payment_date.desc().nulls_last())
+            .limit(8)
+        ),
     )
 
-    recent_payment_list = [
-        {
-            "id": payment.id,
-            "sponsor_id": sponsor.id,
-            "sponsor_name": sponsor.full_name,
-            "amount": float(payment.amount),
-            "date": payment.payment_date.strftime("%d/%m/%Y")
-            if payment.payment_date
-            else "",
-        }
-        for payment, sponsor in recent_payments
-    ]
+    try:
+        recent_payment_list = [
+            {
+                "id": payment.id,
+                "sponsor_id": sponsor.id,
+                "sponsor_name": sponsor.full_name,
+                "amount": float(payment.amount),
+                "date": payment.payment_date.strftime("%d/%m/%Y")
+                if payment.payment_date
+                else "",
+            }
+            for payment, sponsor in recent_payments
+        ]
+    except Exception as exc:
+        _rollback_after_dashboard_error(db, "recent_payments_serialize", exc)
+        recent_payment_list = []
 
     return {
         "total_sponsors": total_sponsors,

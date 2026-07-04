@@ -90,6 +90,7 @@ def _serialize_payment(payment) -> dict:
 
 # ── Sponsors ───────────────────────────────────────────────────────────────────
 
+@router.get("/giving/supporters", summary="List all supporters (Finance Admin only)")
 @router.get("/sponsors", summary="List all sponsors (Finance Admin only)")
 async def list_sponsors_endpoint(
     page: int = Query(1, ge=1),
@@ -104,6 +105,7 @@ async def list_sponsors_endpoint(
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 
 
+@router.post("/giving/supporters", summary="Create a new supporter", status_code=201)
 @router.post("/sponsors", summary="Create a new sponsor", status_code=201)
 async def create_sponsor_endpoint(
     body: SponsorCreate,
@@ -114,6 +116,7 @@ async def create_sponsor_endpoint(
     return success_response(data=_serialize_sponsor(sponsor), message="Sponsor created.")
 
 
+@router.get("/giving/supporters/{sponsor_id}", summary="Get supporter with contribution history")
 @router.get("/sponsors/{sponsor_id}", summary="Get sponsor with payment history")
 async def get_sponsor_endpoint(
     sponsor_id: uuid.UUID,
@@ -127,6 +130,7 @@ async def get_sponsor_endpoint(
     return success_response(data=data)
 
 
+@router.put("/giving/supporters/{sponsor_id}", summary="Update supporter")
 @router.put("/sponsors/{sponsor_id}", summary="Update sponsor")
 async def update_sponsor_endpoint(
     sponsor_id: uuid.UUID,
@@ -141,6 +145,11 @@ async def update_sponsor_endpoint(
 
 # ── Payments ───────────────────────────────────────────────────────────────────
 
+@router.post(
+    "/giving/supporters/{sponsor_id}/contributions",
+    summary="Record a manual contribution",
+    status_code=201,
+)
 @router.post("/sponsors/{sponsor_id}/payments", summary="Record a manual payment", status_code=201)
 async def record_payment_endpoint(
     sponsor_id: uuid.UUID,
@@ -153,6 +162,10 @@ async def record_payment_endpoint(
     return success_response(data=_serialize_payment(payment), message="Payment recorded.")
 
 
+@router.get(
+    "/giving/supporters/{sponsor_id}/contributions",
+    summary="Contribution history for a supporter",
+)
 @router.get("/sponsors/{sponsor_id}/payments", summary="Payment history for a sponsor")
 async def list_payments_endpoint(
     sponsor_id: uuid.UUID,
@@ -166,6 +179,7 @@ async def list_payments_endpoint(
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 
 
+@router.get("/giving/contributions", summary="List supporter contributions")
 @router.get("/payments", summary="List sponsor payments")
 async def list_all_payments_endpoint(
     page: int = Query(1, ge=1),
@@ -190,6 +204,11 @@ async def list_all_payments_endpoint(
     return paginated_response(data=data, total=total, page=page, per_page=per_page)
 
 
+@router.post(
+    "/giving/contributions/initiate",
+    summary="Initiate Flutterwave contribution",
+    status_code=201,
+)
 @router.post("/payments/initiate", summary="Initiate Flutterwave payment", status_code=201)
 async def initiate_payment_endpoint(
     body: InitiatePaymentRequest,
@@ -200,6 +219,7 @@ async def initiate_payment_endpoint(
     return success_response(data=result, message="Payment initiated.")
 
 
+@router.get("/giving/contributions/verify/{tx_ref}", summary="Verify Flutterwave contribution")
 @router.get("/payments/verify/{tx_ref}", summary="Verify Flutterwave payment")
 async def verify_payment_endpoint(
     tx_ref: str,
@@ -215,6 +235,7 @@ async def verify_payment_endpoint(
 
 # ── Finance Dashboard & Reports ────────────────────────────────────────────────
 
+@router.get("/giving/dashboard", summary="Giving dashboard")
 @router.get("/finance/dashboard", summary="Finance dashboard")
 async def finance_dashboard_endpoint(
     current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
@@ -224,6 +245,7 @@ async def finance_dashboard_endpoint(
     return success_response(data=dashboard)
 
 
+@router.get("/giving/report/annual", summary="Annual giving report")
 @router.get("/finance/report/annual", summary="Annual sponsorship report")
 async def annual_report_endpoint(
     year: int = Query(datetime.now(timezone.utc).year, ge=2020, le=2100),

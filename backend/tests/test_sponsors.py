@@ -16,6 +16,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from tests.conftest import auth_headers, make_token
 from tests.utils import (
@@ -26,6 +27,7 @@ from tests.utils import (
 )
 from app.auth.models import UserRole
 from app.models.sponsor import PaymentStatusEnum
+from app.services.sponsor_service import get_finance_dashboard
 
 
 # ── List Sponsors ──────────────────────────────────────────────────────────────
@@ -248,6 +250,44 @@ def test_finance_dashboard_accessible_by_finance_admin(client, db, finance_user,
     assert response.json()["success"] is True
 
 
+def test_giving_dashboard_alias_accessible_by_finance_admin(
+    client, db, finance_user, finance_token
+):
+    """Finance admin can access the neutral giving dashboard alias."""
+    response = client.get(
+        "/api/v1/giving/dashboard",
+        headers=auth_headers(finance_token),
+    )
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+
+def test_finance_dashboard_degrades_when_sponsor_schema_query_fails():
+    """Dashboard should not 500 when a sponsor-only DB query fails."""
+
+    class BrokenSponsorDb:
+        def __init__(self):
+            self.rollbacks = 0
+
+        def query(self, *args, **kwargs):
+            raise SQLAlchemyError("sponsor schema drift")
+
+        def rollback(self):
+            self.rollbacks += 1
+
+    db = BrokenSponsorDb()
+    dashboard = get_finance_dashboard(db)
+
+    assert dashboard["total_sponsors"] == 0
+    assert dashboard["active_sponsors"] == 0
+    assert dashboard["monthly_revenue"] == 0.0
+    assert dashboard["annual_revenue"] == 0.0
+    assert dashboard["payments_this_month"] == 0
+    assert dashboard["overdue_sponsors"] == []
+    assert dashboard["recent_payments"] == []
+    assert db.rollbacks >= 1
+
+
 def test_finance_dashboard_blocked_for_hr(client, db, hr_user, hr_token):
     """HR admin must not access the finance dashboard."""
     response = client.get(
@@ -272,6 +312,17 @@ def test_annual_report_accessible_by_finance_admin(client, db, finance_user, fin
     """Finance admin can access the annual sponsorship report."""
     response = client.get(
         "/api/v1/finance/report/annual?year=2024",
+        headers=auth_headers(finance_token),
+    )
+    assert response.status_code == 200
+
+
+def test_giving_annual_report_alias_accessible_by_finance_admin(
+    client, db, finance_user, finance_token
+):
+    """Finance admin can access the neutral annual giving report alias."""
+    response = client.get(
+        "/api/v1/giving/report/annual?year=2024",
         headers=auth_headers(finance_token),
     )
     assert response.status_code == 200

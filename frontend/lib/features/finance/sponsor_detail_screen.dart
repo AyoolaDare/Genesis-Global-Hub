@@ -537,13 +537,13 @@ class _RecordPaymentSheetState
     try {
       final dio = ref.read(dioProvider);
       await dio.post(
-        '${ApiEndpoints.sponsorById(widget.sponsor.id)}/payments',
+        ApiEndpoints.sponsorPayments(widget.sponsor.id),
         data: {
           'amount': double.parse(_amountController.text.trim()),
-          'method': _method,
+          'payment_method': _method,
           'payment_date': _paymentDate.toIso8601String(),
           if (_referenceController.text.trim().isNotEmpty)
-            'reference': _referenceController.text.trim(),
+            'notes': _referenceController.text.trim(),
         },
       );
       widget.onSaved();
