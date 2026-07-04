@@ -615,12 +615,15 @@ class _FlutterwavePaymentSheetState
         },
       );
       final data = Map<String, dynamic>.from(response.data['data'] as Map);
+      final sponsorNotified = data['sponsor_notified'] == true;
       setState(() => _initiation = PaymentInitiation.fromJson(data));
       widget.onCreated();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Flutterwave payment link generated'),
+          SnackBar(
+            content: Text(sponsorNotified
+                ? 'Payment link generated and sent to the sponsor'
+                : 'Flutterwave payment link generated'),
             backgroundColor: AppColors.success,
           ),
         );

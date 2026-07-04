@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # ── Termii (SMS) ──────────────────────────────────────────────────────────
     TERMII_API_KEY: str = ""
-    TERMII_SENDER_ID: str = "GenesisGL"
+    TERMII_SENDER_ID: str = "Gene6Global"
 
     # ── Brevo (transactional email) ───────────────────────────────────────────
     BREVO_API_KEY: str = ""

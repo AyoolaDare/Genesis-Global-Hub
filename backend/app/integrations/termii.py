@@ -28,6 +28,10 @@ TEMPLATES: dict[str, str] = {
         "Thank you {name} for your generous support of N{amount}. "
         "God bless you! - Genesis Global"
     ),
+    "payment_link": (
+        "Hi {name}, complete your Genesis Global sponsorship payment of N{amount} "
+        "securely here: {link} God bless you!"
+    ),
     "payment_reminder": (
         "Dear {name}, your Genesis Global sponsorship of N{amount} is due on {date}. "
         "God bless you!"

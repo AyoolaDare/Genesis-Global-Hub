@@ -374,3 +374,44 @@ def test_initiate_flutterwave_payment(client, db, finance_user, finance_token):
     assert response.status_code == 201
     data = response.json()["data"]
     assert "link" in data or "payment_link" in data or "data" in data
+
+
+def test_initiate_flutterwave_payment_auto_sends_link(
+    client, db, finance_user, finance_token
+):
+    """Generating a link automatically queues the payment-link notification
+    (SMS/email) to the sponsor."""
+    sponsor = create_sponsor(
+        db,
+        full_name="Auto Notify Sponsor",
+        created_by=finance_user.id,
+    )
+    sponsor.email = "auto@sponsor.test"
+    sponsor.phone = "08066666666"
+    db.flush()
+
+    mock_fw_response = {
+        "status": "success",
+        "message": "Hosted Link",
+        "data": {"link": "https://checkout.flutterwave.com/pay/auto123"},
+    }
+
+    with patch(
+        "app.services.sponsor_service.flutterwave.initiate_payment",
+        new=AsyncMock(return_value=mock_fw_response),
+    ), patch(
+        "app.workers.tasks.notification_tasks.send_payment_link"
+    ) as mock_task:
+        mock_task.apply_async = MagicMock()
+        response = client.post(
+            "/api/v1/payments/initiate",
+            json={"sponsor_id": str(sponsor.id), "amount": 50000},
+            headers=auth_headers(finance_token),
+        )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["sponsor_notified"] is True
+    mock_task.apply_async.assert_called_once()
+    task_args = mock_task.apply_async.call_args.kwargs["args"]
+    assert task_args[1] == "https://checkout.flutterwave.com/pay/auto123"

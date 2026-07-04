@@ -81,6 +81,40 @@ def process_webhook_payment(self, payload: dict) -> dict:
             return result
 
 
+def generate_sponsor_payment_link(db, sponsor) -> "str | None":
+    """
+    Create a fresh Flutterwave checkout link for a sponsor's standard amount.
+
+    Reuses the same initiation path as the admin UI (creates a PENDING
+    SponsorPayment row tied to a unique tx_ref) but suppresses the
+    payment-link notification task — callers embed the link in their own
+    reminder message instead.
+
+    Returns the hosted checkout URL, or None if Flutterwave is unavailable
+    (callers should still send their message, just without a link).
+    """
+    from app.services.sponsor_service import initiate_flutterwave_payment
+
+    try:
+        result = _run_async(
+            initiate_flutterwave_payment(
+                sponsor_id=sponsor.id,
+                amount=float(sponsor.amount),
+                redirect_url=None,
+                db=db,
+                notify_sponsor=False,
+            )
+        )
+        return result.get("payment_link")
+    except Exception as exc:
+        logger.warning(
+            "generate_sponsor_payment_link: could not create link for sponsor=%s: %s",
+            sponsor.id,
+            str(exc),
+        )
+        return None
+
+
 def _sponsors_with_latest_due(db) -> list:
     """
     Return (sponsor, latest_completed_payment) pairs for active recurring
@@ -115,6 +149,25 @@ def _sponsors_with_latest_due(db) -> list:
     return list(latest.values())
 
 
+def _send_overdue_sms_with_link(db, sponsor, due_date) -> None:
+    """
+    Render the payment_overdue template, append a fresh Flutterwave payment
+    link (when available), and SMS it to the sponsor. Raises on send failure
+    so callers can log per-sponsor errors.
+    """
+    from app.integrations.termii import termii, TEMPLATES
+
+    link = generate_sponsor_payment_link(db, sponsor)
+    message = TEMPLATES["payment_overdue"].format(
+        name=sponsor.full_name.split()[0],
+        amount=f"{float(sponsor.amount):,.0f}",
+        date=due_date.strftime("%d %b %Y"),
+    )
+    if link:
+        message += f" Pay securely here: {link}"
+    _run_async(termii.send_sms(to=sponsor.phone, message=message, channel="generic"))
+
+
 @celery_app.task(name="check_overdue_payments", acks_late=True)
 def check_overdue_payments() -> dict:
     """
@@ -128,7 +181,6 @@ def check_overdue_payments() -> dict:
     Returns:
         Dict with keys: reminders_sent, overdue_alerts_sent, escalations_sent.
     """
-    from app.integrations.termii import termii
     from app.workers.tasks.notification_tasks import send_payment_reminder
 
     stats = {"reminders_sent": 0, "overdue_alerts_sent": 0, "escalations_sent": 0}
@@ -158,22 +210,11 @@ def check_overdue_payments() -> dict:
                         due_date,
                     )
 
-                # 2. 1-6 days overdue — send gentle overdue SMS
+                # 2. 1-6 days overdue — send gentle overdue SMS with pay link
                 elif 1 <= days_overdue <= 6 and not recently_reminded:
                     if sponsor.phone:
                         try:
-                            _run_async(
-                                termii.send_templated_message(
-                                    to=sponsor.phone,
-                                    template_key="payment_overdue",
-                                    template_vars={
-                                        "name": sponsor.full_name.split()[0],
-                                        "amount": f"{float(sponsor.amount):,.0f}",
-                                        "date": due_date.strftime("%d %b %Y"),
-                                    },
-                                    channel="generic",
-                                )
-                            )
+                            _send_overdue_sms_with_link(db, sponsor, due_date)
                             payment.reminder_sent_at = datetime.now(timezone.utc)
                             db.flush()
                             stats["overdue_alerts_sent"] += 1
@@ -184,22 +225,11 @@ def check_overdue_payments() -> dict:
                                 str(sms_exc),
                             )
 
-                # 3. 7+ days overdue — escalate to coordinator + send SMS
+                # 3. 7+ days overdue — escalate to coordinator + send SMS with pay link
                 elif days_overdue >= 7 and not recently_reminded:
                     if sponsor.phone:
                         try:
-                            _run_async(
-                                termii.send_templated_message(
-                                    to=sponsor.phone,
-                                    template_key="payment_overdue",
-                                    template_vars={
-                                        "name": sponsor.full_name.split()[0],
-                                        "amount": f"{float(sponsor.amount):,.0f}",
-                                        "date": due_date.strftime("%d %b %Y"),
-                                    },
-                                    channel="generic",
-                                )
-                            )
+                            _send_overdue_sms_with_link(db, sponsor, due_date)
                             payment.reminder_sent_at = datetime.now(timezone.utc)
                             db.flush()
                         except Exception as sms_exc:
@@ -251,13 +281,17 @@ def reconcile_pending_payments() -> dict:
     confirmed successful are credited and the thank-you is queued;
     confirmed failures are marked FAILED.
 
+    Also expires PENDING Flutterwave payments older than 30 days (their
+    checkout links are long dead) by marking them CANCELLED, so rows created
+    by automated reminder links never accumulate as stale pending revenue.
+
     Returns:
-        Dict with keys: checked, completed, failed, still_pending.
+        Dict with keys: checked, completed, failed, still_pending, expired.
     """
     from app.integrations.webhook_handlers import handle_payment_verification
     from app.models.sponsor import PaymentStatusEnum, SponsorPayment
 
-    stats = {"checked": 0, "completed": 0, "failed": 0, "still_pending": 0}
+    stats = {"checked": 0, "completed": 0, "failed": 0, "still_pending": 0, "expired": 0}
     now = datetime.now(timezone.utc)
     min_age = now - timedelta(minutes=15)
     max_age = now - timedelta(days=30)
@@ -300,6 +334,28 @@ def reconcile_pending_payments() -> dict:
                     )
                     stats["still_pending"] += 1
 
+            # Expire never-paid link payments older than 30 days
+            expired_rows = (
+                db.query(SponsorPayment)
+                .filter(
+                    SponsorPayment.status == PaymentStatusEnum.PENDING,
+                    SponsorPayment.deleted_at.is_(None),
+                    SponsorPayment.payment_method == "FLUTTERWAVE",
+                    SponsorPayment.created_at < max_age,
+                )
+                .limit(500)
+                .all()
+            )
+            for payment in expired_rows:
+                payment.status = PaymentStatusEnum.CANCELLED
+                payment.notes = (
+                    (payment.notes + " " if payment.notes else "")
+                    + "Payment link expired without payment (auto-cancelled after 30 days)."
+                )
+                stats["expired"] += 1
+            if expired_rows:
+                db.flush()
+
     except Exception as exc:
         logger.error("reconcile_pending_payments fatal error: %s", str(exc), exc_info=True)
         stats["error"] = str(exc)
@@ -323,8 +379,6 @@ def send_overdue_payment_alerts() -> dict:
     Returns:
         Dict with keys: alerts_sent, coordinator_notified.
     """
-    from app.integrations.termii import termii
-
     stats = {"alerts_sent": 0, "coordinator_notified": False}
     today = date.today()
     cutoff = today - timedelta(days=7)
@@ -346,18 +400,7 @@ def send_overdue_payment_alerts() -> dict:
 
                 if sponsor.phone and not recently_reminded:
                     try:
-                        _run_async(
-                            termii.send_templated_message(
-                                to=sponsor.phone,
-                                template_key="payment_overdue",
-                                template_vars={
-                                    "name": sponsor.full_name.split()[0],
-                                    "amount": f"{float(sponsor.amount):,.0f}",
-                                    "date": payment.next_due_date.strftime("%d %b %Y"),
-                                },
-                                channel="generic",
-                            )
-                        )
+                        _send_overdue_sms_with_link(db, sponsor, payment.next_due_date)
                         payment.reminder_sent_at = datetime.now(timezone.utc)
                         db.flush()
                         stats["alerts_sent"] += 1

@@ -52,7 +52,7 @@ services:
       - key: TERMII_API_KEY
         sync: false
       - key: TERMII_SENDER_ID
-        value: "GenesisGL"
+        value: "Gene6Global"
 
       # ── Brevo (Email) — set manually ──────────────────────────────────────────
       - key: BREVO_API_KEY

@@ -294,6 +294,7 @@ async def initiate_flutterwave_payment(
     amount: float,
     redirect_url: Optional[str],
     db: Session,
+    notify_sponsor: bool = True,
 ) -> dict:
     """
     Create a pending payment record and return a real Flutterwave payment link.
@@ -301,6 +302,10 @@ async def initiate_flutterwave_payment(
     Calls POST /payments on the Flutterwave API server-side; the secret key
     never leaves the backend. The pending SponsorPayment row is only kept if
     Flutterwave accepts the request.
+
+    When notify_sponsor is True (the admin-initiated path), the link is also
+    sent to the sponsor automatically by SMS/WhatsApp and email. Reminder
+    jobs pass False because they embed the link in their own message.
     """
     sponsor = get_sponsor(sponsor_id, db)
 
@@ -355,11 +360,30 @@ async def initiate_flutterwave_payment(
     db.add(payment)
     db.flush()
 
+    sponsor_notified = False
+    if notify_sponsor and (sponsor.phone or sponsor.email):
+        # Deferred import to avoid circular dependency; short countdown so
+        # the worker sees the committed payment row before loading it.
+        try:
+            from app.workers.tasks.notification_tasks import send_payment_link
+            send_payment_link.apply_async(
+                args=[str(payment.id), payment_link], countdown=5
+            )
+            sponsor_notified = True
+        except Exception as exc:
+            logger.error(
+                "initiate_flutterwave_payment: failed to queue payment-link "
+                "notification for payment=%s: %s",
+                payment.id,
+                exc,
+            )
+
     return {
         "tx_ref": tx_ref,
         "payment_link": payment_link,
         "amount": amount,
         "sponsor_name": sponsor.full_name,
+        "sponsor_notified": sponsor_notified,
     }
 
 

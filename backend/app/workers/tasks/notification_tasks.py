@@ -306,12 +306,156 @@ def send_payment_thank_you(payment_id: str) -> dict:
         return result
 
 
+@celery_app.task(name="send_payment_link", acks_late=True)
+def send_payment_link(payment_id: str, payment_link: str) -> dict:
+    """
+    Send a freshly generated Flutterwave checkout link to the sponsor by
+    email and SMS/WhatsApp (per their preferred channel).
+
+    Queued automatically when a payment link is initiated so the sponsor
+    receives it without any manual copy/paste by the finance admin.
+
+    Args:
+        payment_id:   UUID string of the PENDING SponsorPayment record.
+        payment_link: The Flutterwave hosted checkout URL.
+
+    Returns:
+        Dict with keys: success, payment_id, channels, message.
+    """
+    from app.integrations.termii import termii
+    from app.models.sponsor import PaymentStatusEnum, SponsorPayment, Sponsor
+
+    result = {
+        "success": False,
+        "payment_id": payment_id,
+        "channels": [],
+        "message": "",
+    }
+    try:
+        with get_db_context() as db:
+            payment = db.query(SponsorPayment).filter(
+                SponsorPayment.id == uuid.UUID(payment_id)
+            ).first()
+
+            if not payment:
+                result["message"] = f"Payment {payment_id} not found"
+                logger.warning("send_payment_link: payment not found: %s", payment_id)
+                return result
+
+            if payment.status != PaymentStatusEnum.PENDING:
+                result["message"] = "Payment is no longer pending - link not sent"
+                logger.info(
+                    "send_payment_link: payment=%s status=%s - skipping",
+                    payment_id,
+                    payment.status,
+                )
+                return result
+
+            sponsor: Optional[Sponsor] = db.query(Sponsor).filter(
+                Sponsor.id == payment.sponsor_id,
+                Sponsor.deleted_at.is_(None),
+            ).first()
+
+            if not sponsor:
+                result["message"] = "Sponsor not found"
+                logger.warning("send_payment_link: sponsor not found for payment=%s", payment_id)
+                return result
+
+            first_name = sponsor.full_name.split()[0] if sponsor.full_name else "Friend"
+            amount_str = f"{float(payment.amount):,.0f}"
+            preferred = sponsor.preferred_channel.value.lower() if sponsor.preferred_channel else "sms"
+
+            sent_channels: list[str] = []
+
+            if sponsor.email:
+                from app.integrations.brevo import BrevoClient
+                brevo = BrevoClient()
+                html_body = (
+                    f"<p>Dear {sponsor.full_name},</p>"
+                    f"<p>Please complete your Genesis Global sponsorship payment of "
+                    f"<strong>&#8358;{amount_str}</strong> using the secure link below:</p>"
+                    f"<p><a href='{payment_link}' "
+                    f"style='display:inline-block;padding:12px 24px;background:#1a7f37;"
+                    f"color:#fff;border-radius:6px;text-decoration:none;'>Pay Securely</a></p>"
+                    f"<p>Or copy this link into your browser:<br>{payment_link}</p>"
+                    f"<p>God bless you!<br>The Genesis Global Finance Team</p>"
+                )
+                try:
+                    sent = brevo.send_email(
+                        to_email=sponsor.email,
+                        subject="Your Genesis Global Sponsorship Payment Link",
+                        html_content=html_body,
+                        text_content=(
+                            f"Dear {sponsor.full_name}, complete your Genesis Global "
+                            f"sponsorship payment of NGN {amount_str} securely here: {payment_link}"
+                        ),
+                    )
+                    if sent:
+                        sent_channels.append("EMAIL")
+                except Exception as email_exc:
+                    logger.error("send_payment_link email error: %s", str(email_exc))
+
+            if sponsor.phone:
+                phone_channel = "whatsapp" if preferred == "whatsapp" else "generic"
+                channel_name = "WHATSAPP" if phone_channel == "whatsapp" else "SMS"
+                try:
+                    _run_async(
+                        termii.send_templated_message(
+                            to=sponsor.phone,
+                            template_key="payment_link",
+                            template_vars={
+                                "name": first_name,
+                                "amount": amount_str,
+                                "link": payment_link,
+                            },
+                            channel=phone_channel,
+                        )
+                    )
+                    sent_channels.append(channel_name)
+                except Exception as sms_exc:
+                    logger.error(
+                        "send_payment_link %s error: %s", channel_name.lower(), str(sms_exc)
+                    )
+
+            if not sponsor.phone and not sponsor.email:
+                result["message"] = "Sponsor has no contact info for notifications"
+                logger.warning(
+                    "send_payment_link: sponsor=%s has no phone or email", sponsor.id
+                )
+                return result
+
+        result["success"] = bool(sent_channels)
+        result["channels"] = sent_channels
+        result["message"] = (
+            f"Payment link sent via {', '.join(sent_channels)}"
+            if sent_channels
+            else "Payment link delivery failed on all channels"
+        )
+        logger.info(
+            "send_payment_link: payment=%s channels=%s success=%s",
+            payment_id,
+            sent_channels,
+            bool(sent_channels),
+        )
+        return result
+
+    except Exception as exc:
+        logger.error(
+            "send_payment_link error: payment=%s error=%s", payment_id, str(exc),
+            exc_info=True,
+        )
+        result["message"] = str(exc)
+        return result
+
+
 @celery_app.task(name="send_payment_reminder", acks_late=True)
 def send_payment_reminder(sponsor_id: str) -> dict:
     """
-    Load a Sponsor from the database and send a payment reminder via SMS.
+    Load a Sponsor from the database and send a payment reminder via
+    SMS/WhatsApp and email, including a fresh Flutterwave payment link so
+    the sponsor can pay immediately without any manual step.
 
-    Updates reminder_sent_at on the Sponsor record.
+    Updates reminder_sent_at on the latest completed payment record.
 
     Args:
         sponsor_id: UUID string of the Sponsor record.
@@ -319,8 +463,9 @@ def send_payment_reminder(sponsor_id: str) -> dict:
     Returns:
         Dict with keys: success, sponsor_id, message.
     """
-    from app.integrations.termii import termii
+    from app.integrations.termii import termii, TEMPLATES
     from app.models.sponsor import PaymentStatusEnum, Sponsor, SponsorPayment
+    from app.workers.tasks.payment_tasks import generate_sponsor_payment_link
     from datetime import datetime as dt
 
     result = {"success": False, "sponsor_id": sponsor_id, "message": ""}
@@ -335,8 +480,8 @@ def send_payment_reminder(sponsor_id: str) -> dict:
                 result["message"] = f"Sponsor {sponsor_id} not found"
                 return result
 
-            if not sponsor.phone:
-                result["message"] = "Sponsor has no phone number"
+            if not sponsor.phone and not sponsor.email:
+                result["message"] = "Sponsor has no phone number or email"
                 return result
 
             # Due-date tracking lives on the latest completed payment record
@@ -360,26 +505,88 @@ def send_payment_reminder(sponsor_id: str) -> dict:
             amount_str = f"{float(sponsor.amount):,.0f}"
             first_name = sponsor.full_name.split()[0]
 
-            _run_async(
-                termii.send_templated_message(
-                    to=sponsor.phone,
-                    template_key="payment_reminder",
-                    template_vars={
-                        "name": first_name,
-                        "amount": amount_str,
-                        "date": due_date_str,
-                    },
-                    channel="generic",
-                )
-            )
+            # Fresh checkout link so the sponsor can pay straight from the
+            # reminder. Delivery proceeds without it if generation fails.
+            payment_link = generate_sponsor_payment_link(db, sponsor)
 
-            if latest_payment:
+            message = TEMPLATES["payment_reminder"].format(
+                name=first_name, amount=amount_str, date=due_date_str
+            )
+            if payment_link:
+                message += f" Pay securely here: {payment_link}"
+
+            sent_channels: list[str] = []
+
+            if sponsor.phone:
+                preferred = (
+                    sponsor.preferred_channel.value.lower()
+                    if sponsor.preferred_channel
+                    else "sms"
+                )
+                phone_channel = "whatsapp" if preferred == "whatsapp" else "generic"
+                try:
+                    _run_async(
+                        termii.send_sms(
+                            to=sponsor.phone, message=message, channel=phone_channel
+                        )
+                    )
+                    sent_channels.append(
+                        "WHATSAPP" if phone_channel == "whatsapp" else "SMS"
+                    )
+                except Exception as sms_exc:
+                    logger.error(
+                        "send_payment_reminder SMS error: sponsor=%s error=%s",
+                        sponsor_id,
+                        str(sms_exc),
+                    )
+
+            if sponsor.email:
+                from app.integrations.brevo import BrevoClient
+                brevo = BrevoClient()
+                link_html = (
+                    f"<p><a href='{payment_link}' "
+                    f"style='display:inline-block;padding:12px 24px;background:#1a7f37;"
+                    f"color:#fff;border-radius:6px;text-decoration:none;'>Pay Securely</a></p>"
+                    f"<p>Or copy this link into your browser:<br>{payment_link}</p>"
+                    if payment_link
+                    else ""
+                )
+                html_body = (
+                    f"<p>Dear {sponsor.full_name},</p>"
+                    f"<p>Your Genesis Global sponsorship of "
+                    f"<strong>&#8358;{amount_str}</strong> is due on {due_date_str}.</p>"
+                    f"{link_html}"
+                    f"<p>God bless you!<br>The Genesis Global Finance Team</p>"
+                )
+                try:
+                    sent = brevo.send_email(
+                        to_email=sponsor.email,
+                        subject="Sponsorship Payment Reminder — Genesis Global",
+                        html_content=html_body,
+                        text_content=message,
+                    )
+                    if sent:
+                        sent_channels.append("EMAIL")
+                except Exception as email_exc:
+                    logger.error(
+                        "send_payment_reminder email error: sponsor=%s error=%s",
+                        sponsor_id,
+                        str(email_exc),
+                    )
+
+            if sent_channels and latest_payment:
                 latest_payment.reminder_sent_at = dt.now(timezone.utc)
                 db.flush()
 
-        result["success"] = True
-        result["message"] = "Payment reminder sent"
-        logger.info("send_payment_reminder: sent to sponsor=%s", sponsor_id)
+        result["success"] = bool(sent_channels)
+        result["message"] = (
+            f"Payment reminder sent via {', '.join(sent_channels)}"
+            if sent_channels
+            else "Payment reminder delivery failed on all channels"
+        )
+        logger.info(
+            "send_payment_reminder: sponsor=%s channels=%s", sponsor_id, sent_channels
+        )
         return result
 
     except Exception as exc:
