@@ -19,6 +19,7 @@ class NewPatientScreen extends ConsumerStatefulWidget {
 
 class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _memberSearchController = TextEditingController();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -28,12 +29,14 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
 
   String? _gender;
   DateTime? _dateOfBirth;
+  MedicalMemberLookupResult? _selectedMember;
   bool _isChurchMember = false;
   bool _consentGiven = false;
   bool _isSubmitting = false;
 
   @override
   void dispose() {
+    _memberSearchController.dispose();
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
@@ -116,13 +119,42 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
                     title: 'Church & Consent',
                     icon: Icons.church_outlined,
                     children: [
+                      TextFormField(
+                        controller: _memberSearchController,
+                        decoration: const InputDecoration(
+                          labelText: 'Pick Church Member',
+                          hintText: 'Search by name or phone',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.search_outlined, size: 20),
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            if (_selectedMember != null &&
+                                value.trim() != _selectedMember!.fullName) {
+                              _selectedMember = null;
+                              _isChurchMember = false;
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      _MedicalMemberLookup(
+                        query: _memberSearchController.text,
+                        selected: _selectedMember,
+                        onSelected: _applyMember,
+                      ),
+                      const SizedBox(height: 12),
                       CheckboxListTile(
                         value: _isChurchMember,
-                        onChanged: (v) =>
-                            setState(() => _isChurchMember = v ?? false),
+                        onChanged: (v) => setState(() {
+                          _isChurchMember = v ?? false;
+                          if (!_isChurchMember) {
+                            _selectedMember = null;
+                          }
+                        }),
                         title: const Text('Patient is a church member'),
                         subtitle: const Text(
-                          'The system links matching church records privately by phone.',
+                          'Select a church member above or enter details manually.',
                         ),
                         controlAffinity: ListTileControlAffinity.leading,
                         contentPadding: EdgeInsets.zero,
@@ -319,6 +351,21 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
     if (picked != null) setState(() => _dateOfBirth = picked);
   }
 
+  void _applyMember(MedicalMemberLookupResult member) {
+    final nameParts = member.fullName.trim().split(RegExp(r'\s+'));
+    setState(() {
+      _selectedMember = member;
+      _isChurchMember = true;
+      _memberSearchController.text = member.fullName;
+      _firstNameController.text = nameParts.isNotEmpty ? nameParts.first : '';
+      _lastNameController.text =
+          nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
+      _phoneController.text = member.phone ?? '';
+      _gender = member.gender;
+      _dateOfBirth = member.dateOfBirth;
+    });
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -336,6 +383,7 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
     setState(() => _isSubmitting = true);
     try {
       final data = PatientCreate(
+        memberId: _selectedMember?.id,
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
         phone: _phoneController.text.trim().isNotEmpty
@@ -381,4 +429,63 @@ class _NewPatientScreenState extends ConsumerState<NewPatientScreen> {
 
   String _formatDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+}
+
+class _MedicalMemberLookup extends ConsumerWidget {
+  final String query;
+  final MedicalMemberLookupResult? selected;
+  final ValueChanged<MedicalMemberLookupResult> onSelected;
+
+  const _MedicalMemberLookup({
+    required this.query,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (query.trim().length < 2) {
+      return const SizedBox.shrink();
+    }
+
+    final results = ref.watch(medicalMemberLookupProvider(query));
+    return results.when(
+      loading: () => const LinearProgressIndicator(minHeight: 2),
+      error: (e, _) => Text(
+        'Could not search members',
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: AppColors.error),
+      ),
+      data: (members) {
+        if (members.isEmpty) {
+          return Text(
+            'No matching church members',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: AppColors.textSecondary),
+          );
+        }
+
+        return Column(
+          children: members
+              .take(5)
+              .map(
+                (member) => RadioListTile<String>(
+                  value: member.id,
+                  groupValue: selected?.id,
+                  onChanged: (_) => onSelected(member),
+                  title: Text(member.fullName),
+                  subtitle: Text(member.phone ?? 'No phone'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
 }

@@ -35,50 +35,51 @@
     <p>Loading...</p>
   </div>
   <script>
-    const serviceWorkerVersion = "665091688" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */;
-    var scriptLoaded = false;
-    function loadMainDartJs() {
-      if (scriptLoaded) { return; }
-      scriptLoaded = true;
-      var scriptTag = document.createElement('script');
-      scriptTag.src = 'main.dart.js';
-      scriptTag.type = 'application/javascript';
-      document.body.append(scriptTag);
-    }
-    if ('serviceWorker' in navigator) {
+    (function () {
+      var scriptLoaded = false;
+
+      function loadMainDartJs() {
+        if (scriptLoaded) { return; }
+        scriptLoaded = true;
+        var scriptTag = document.createElement('script');
+        scriptTag.src = 'main.dart.js?v=20260704';
+        scriptTag.type = 'application/javascript';
+        document.body.append(scriptTag);
+      }
+
+      async function clearLegacyFlutterServiceWorker() {
+        if (!('serviceWorker' in navigator)) { return false; }
+        var registrations = await navigator.serviceWorker.getRegistrations();
+        if (!registrations.length) { return false; }
+
+        await Promise.all(registrations.map(function (registration) {
+          return registration.unregister();
+        }));
+
+        if ('caches' in window) {
+          var cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(function (cacheName) {
+            return caches.delete(cacheName);
+          }));
+        }
+
+        if (!sessionStorage.getItem('legacyFlutterServiceWorkerCleared')) {
+          sessionStorage.setItem('legacyFlutterServiceWorkerCleared', 'true');
+          window.location.reload();
+          return true;
+        }
+
+        return false;
+      }
+
       window.addEventListener('load', function () {
-        var serviceWorkerUrl = 'flutter_service_worker.js?v=' + serviceWorkerVersion;
-        navigator.serviceWorker.register(serviceWorkerUrl).then(function (reg) {
-          function waitForActivation(serviceWorker) {
-            serviceWorker.addEventListener('statechange', function () {
-              if (serviceWorker.state == 'activated') {
-                console.log('Installed new service worker.');
-                loadMainDartJs();
-              }
-            });
-          }
-          if (!reg.active && (reg.installing || reg.waiting)) {
-            waitForActivation(reg.installing || reg.waiting);
-          } else if (!reg.active.scriptURL.endsWith(serviceWorkerVersion)) {
-            console.log('New service worker available.');
-            reg.addEventListener('updatefound', function () {
-              waitForActivation(reg.installing);
-            });
-            reg.update();
-          } else {
-            loadMainDartJs();
-          }
-        });
-        setTimeout(function () {
-          if (!scriptLoaded) {
-            console.warn('Failed to load app from service worker. Trying to load directly from the network.');
-            loadMainDartJs();
-          }
-        }, 4000);
+        clearLegacyFlutterServiceWorker()
+          .then(function (reloading) {
+            if (!reloading) { loadMainDartJs(); }
+          })
+          .catch(loadMainDartJs);
       });
-    } else {
-      loadMainDartJs();
-    }
+    })();
   </script>
 </body>
 </html>

@@ -224,6 +224,72 @@ def test_medical_cannot_search_member_directory(client, db, medical_user, medica
     assert response.status_code == 403
 
 
+def test_medical_can_lookup_church_members_for_patient_intake(
+    client, db, medical_user, medical_token
+):
+    """Medical staff can pick a limited church member record for patient intake."""
+    member = create_active_member(
+        db,
+        full_name="Medical Lookup Member",
+        phone="08012345678",
+    )
+
+    response = client.get(
+        "/api/v1/medical/members/lookup?search=Lookup",
+        headers=auth_headers(medical_token),
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert any(item["id"] == str(member.id) for item in data)
+    picked = next(item for item in data if item["id"] == str(member.id))
+    assert picked["full_name"] == "Medical Lookup Member"
+    assert picked["phone"] == "08012345678"
+    assert "email" not in picked
+    assert "address" not in picked
+
+
+def test_non_medical_cannot_lookup_members_for_patient_intake(
+    client, db, finance_user, finance_token
+):
+    """Finance users cannot use the medical member picker."""
+    response = client.get(
+        "/api/v1/medical/members/lookup?search=Lookup",
+        headers=auth_headers(finance_token),
+    )
+
+    assert response.status_code == 403
+
+
+def test_medical_can_create_patient_from_selected_church_member(
+    client, db, medical_user, medical_token
+):
+    """Selected member creates a patient while keeping member_link_id private."""
+    member = create_active_member(
+        db,
+        full_name="Selected Church Member",
+        phone="08087654321",
+    )
+
+    response = client.post(
+        "/api/v1/medical/patients",
+        json={
+            "member_id": str(member.id),
+            "full_name": "Selected Church Member",
+            "consent_given": True,
+        },
+        headers=auth_headers(medical_token),
+    )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["full_name"] == "Selected Church Member"
+    assert data["phone"] == "08087654321"
+    assert data["is_church_member"] is True
+    assert "member_link_id" not in response.text
+    assert "member_id" not in data
+
+
 def test_search_requires_minimum_query_length(client, db, medical_user, medical_token):
     """Patient search query must be at least 2 characters."""
     response = client.get(

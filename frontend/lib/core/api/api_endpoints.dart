@@ -66,6 +66,7 @@ class ApiEndpoints {
 
   // Medical
   static const String patients = '/medical/patients';
+  static const String medicalMemberLookup = '/medical/members/lookup';
   static String patientById(String id) => '/medical/patients/$id';
   static String patientVisits(String id) => '/medical/patients/$id/visits';
   static String visitById(String patientId, String visitId) =>

@@ -16,10 +16,15 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser
-from app.core.exceptions import NotFound, PermissionDenied
+from app.core.exceptions import DuplicateRecord, NotFound, PermissionDenied
 from app.models.medical import MedicalPatient, MedicalVisit
 from app.models.member import MemberModel
-from app.schemas.medical import MedicalPatientCreate, MedicalPatientUpdate, MedicalVisitCreate, MedicalVisitUpdate
+from app.schemas.medical import (
+    MedicalPatientCreate,
+    MedicalPatientUpdate,
+    MedicalVisitCreate,
+    MedicalVisitUpdate,
+)
 from app.services.dedup_service import normalize_phone
 
 
@@ -38,9 +43,12 @@ def _find_member_link(full_name: str, phone: Optional[str], db: Session) -> Opti
     if not norm_phone:
         return None
 
+    phone_candidates = {phone.strip(), norm_phone}
+    phone_candidates.discard("")
+
     member = db.query(MemberModel).filter(
         MemberModel.deleted_at.is_(None),
-        MemberModel.phone == norm_phone,
+        MemberModel.phone.in_(phone_candidates),
     ).first()
 
     if member:
@@ -49,20 +57,78 @@ def _find_member_link(full_name: str, phone: Optional[str], db: Session) -> Opti
     return None
 
 
+def lookup_members_for_patient(
+    search: str,
+    db: Session,
+    page: int = 1,
+    per_page: int = 20,
+) -> tuple[list[MemberModel], int]:
+    """Return minimal member records that medical staff can pick for check-ups."""
+    term = f"%{search}%"
+    query = db.query(MemberModel).filter(
+        MemberModel.deleted_at.is_(None),
+        or_(
+            MemberModel.full_name.ilike(term),
+            MemberModel.phone.ilike(term),
+            MemberModel.email.ilike(term),
+        ),
+    ).order_by(MemberModel.full_name.asc())
+
+    total = query.count()
+    items = query.offset((page - 1) * per_page).limit(per_page).all()
+    return items, total
+
+
+def _get_member_for_patient_link(member_id: uuid.UUID, db: Session) -> MemberModel:
+    member = db.query(MemberModel).filter(
+        MemberModel.id == member_id,
+        MemberModel.deleted_at.is_(None),
+    ).first()
+    if not member:
+        raise NotFound(message=f"Member {member_id} not found.")
+    return member
+
+
+def _ensure_member_not_already_patient(
+    member_id: uuid.UUID,
+    current_user: AppUser,
+    db: Session,
+) -> None:
+    existing = db.query(MedicalPatient).filter(
+        MedicalPatient.created_by == current_user.id,
+        MedicalPatient.member_link_id == member_id,
+        MedicalPatient.deleted_at.is_(None),
+    ).first()
+    if existing:
+        raise DuplicateRecord(
+            message="This church member already has a patient record in your medical list."
+        )
+
+
 def create_patient(
     data: MedicalPatientCreate,
     current_user: AppUser,
     db: Session,
 ) -> MedicalPatient:
-    """Create a new patient. Silently links to member if phone matches."""
-    member_link_id = _find_member_link(data.full_name, data.phone, db)
+    """Create a new patient. Links explicitly by selected member or silently by phone."""
+    linked_member = None
+    if data.member_id:
+        linked_member = _get_member_for_patient_link(data.member_id, db)
+        _ensure_member_not_already_patient(linked_member.id, current_user, db)
+
+    member_link_id = (
+        linked_member.id
+        if linked_member
+        else _find_member_link(data.full_name, data.phone, db)
+    )
     is_church_member = member_link_id is not None
 
     patient = MedicalPatient(
         full_name=data.full_name,
-        phone=data.phone,
-        gender=data.gender,
-        date_of_birth=data.date_of_birth,
+        phone=data.phone or (linked_member.phone if linked_member else None),
+        gender=data.gender or (linked_member.gender if linked_member else None),
+        date_of_birth=data.date_of_birth
+        or (linked_member.date_of_birth if linked_member else None),
         is_church_member=is_church_member,
         member_link_id=member_link_id,  # stored in DB, never returned in API
         consent_given=data.consent_given,

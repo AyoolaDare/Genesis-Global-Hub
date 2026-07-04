@@ -9,6 +9,7 @@ CRITICAL SECURITY:
 Endpoints:
   GET    /medical/patients               List MY patients
   POST   /medical/patients               Create patient
+  GET    /medical/members/lookup         Pick church member for check-up
   GET    /medical/patients/search        Search MY patients
   GET    /medical/patients/{id}          Get patient (must be mine)
   PUT    /medical/patients/{id}          Update patient
@@ -44,6 +45,7 @@ from app.services.medical_service import (
     get_visit,
     list_patients,
     list_visits,
+    lookup_members_for_patient,
     update_patient,
     update_visit,
 )
@@ -73,6 +75,17 @@ def _serialize_patient(patient) -> dict:
     }
 
 
+def _serialize_member_lookup(member) -> dict:
+    """Serialize the minimum member fields needed for medical intake."""
+    return {
+        "id": member.id,
+        "full_name": member.full_name,
+        "phone": member.phone,
+        "gender": getattr(member.gender, "value", member.gender),
+        "date_of_birth": member.date_of_birth,
+    }
+
+
 def _serialize_visit(visit) -> dict:
     return {
         "id": visit.id,
@@ -91,6 +104,19 @@ def _serialize_visit(visit) -> dict:
 
 
 # ── Patients ───────────────────────────────────────────────────────────────────
+
+@router.get("/members/lookup", summary="Search church members for patient intake")
+async def lookup_member_for_patient_endpoint(
+    search: str = Query(..., min_length=2, max_length=100),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=50),
+    current_user: AppUser = Depends(require_role(*_MEDICAL_ROLES)),
+    db: Session = Depends(get_db),
+):
+    members, total = lookup_members_for_patient(search, db, page, per_page)
+    data = [_serialize_member_lookup(m) for m in members]
+    return paginated_response(data=data, total=total, page=page, per_page=per_page)
+
 
 @router.get("/patients", summary="List my patients only")
 async def list_patients_endpoint(

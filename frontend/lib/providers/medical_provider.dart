@@ -81,6 +81,34 @@ class Patient {
       };
 }
 
+class MedicalMemberLookupResult {
+  final String id;
+  final String fullName;
+  final String? phone;
+  final String? gender;
+  final DateTime? dateOfBirth;
+
+  const MedicalMemberLookupResult({
+    required this.id,
+    required this.fullName,
+    this.phone,
+    this.gender,
+    this.dateOfBirth,
+  });
+
+  factory MedicalMemberLookupResult.fromJson(Map<String, dynamic> json) {
+    return MedicalMemberLookupResult(
+      id: json['id']?.toString() ?? '',
+      fullName: json['full_name']?.toString() ?? '',
+      phone: json['phone']?.toString(),
+      gender: json['gender']?.toString(),
+      dateOfBirth: json['date_of_birth'] != null
+          ? DateTime.tryParse(json['date_of_birth'].toString())
+          : null,
+    );
+  }
+}
+
 class PatientVisit {
   final String id;
   final String patientId;
@@ -129,6 +157,7 @@ class PatientVisit {
 }
 
 class PatientCreate {
+  final String? memberId;
   final String firstName;
   final String lastName;
   final String? phone;
@@ -142,6 +171,7 @@ class PatientCreate {
   final bool consentGiven;
 
   const PatientCreate({
+    this.memberId,
     required this.firstName,
     required this.lastName,
     this.phone,
@@ -156,6 +186,7 @@ class PatientCreate {
   });
 
   Map<String, dynamic> toJson() => {
+        if (memberId != null) 'member_id': memberId,
         'full_name': '$firstName $lastName'.trim(),
         'phone': phone,
         'gender': gender,
@@ -220,6 +251,19 @@ class PatientsList {
         totalPages: 0,
       );
 }
+
+final medicalMemberLookupProvider =
+    FutureProvider.family<List<MedicalMemberLookupResult>, String>(
+        (ref, query) async {
+  if (query.trim().length < 2) return [];
+  final dio = ref.read(dioProvider);
+  final response = await dio.get(
+    ApiEndpoints.medicalMemberLookup,
+    queryParameters: {'search': query.trim(), 'per_page': 20},
+  );
+  final data = response.data['data'] as List;
+  return data.map((e) => MedicalMemberLookupResult.fromJson(e)).toList();
+});
 
 // ---------------------------------------------------------------------------
 // Notifier
