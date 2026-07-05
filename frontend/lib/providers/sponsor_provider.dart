@@ -10,6 +10,7 @@ class Sponsor {
   final String? address;
   final String? category;
   final double totalContributions;
+  final bool isActive;
   final DateTime createdAt;
   final List<Payment> payments;
 
@@ -21,6 +22,7 @@ class Sponsor {
     this.address,
     this.category,
     this.totalContributions = 0,
+    this.isActive = true,
     required this.createdAt,
     this.payments = const [],
   });
@@ -37,6 +39,7 @@ class Sponsor {
               json['amount'] ??
               0.0)
           .toDouble(),
+      isActive: json['is_active'] ?? true,
       createdAt: DateTime.parse(
           json['created_at'] ?? DateTime.now().toIso8601String()),
       payments: json['payments'] != null

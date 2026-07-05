@@ -366,6 +366,47 @@ def assign_member(
     return assignment
 
 
+def get_member_assignments(member_id: uuid.UUID, db: Session) -> list[dict]:
+    """
+    Return a member's active unit assignments with resolved unit names,
+    for display on the member detail screen.
+    """
+    member = db.query(MemberModel).filter(
+        MemberModel.id == member_id, MemberModel.deleted_at.is_(None)
+    ).first()
+    if not member:
+        raise NotFound(message=f"Member {member_id} not found.")
+
+    assignments = db.query(MemberAssignment).filter(
+        MemberAssignment.member_id == member_id,
+        MemberAssignment.deleted_at.is_(None),
+        MemberAssignment.left_at.is_(None),
+    ).order_by(MemberAssignment.joined_at.desc()).all()
+
+    names: dict[uuid.UUID, str] = {}
+    by_type = {
+        "DEPARTMENT": (Department, [a.assignment_id for a in assignments if a.assignment_type == "DEPARTMENT"]),
+        "TEAM": (Team, [a.assignment_id for a in assignments if a.assignment_type == "TEAM"]),
+        "GROUP": (Group, [a.assignment_id for a in assignments if a.assignment_type == "GROUP"]),
+    }
+    for model, ids in by_type.values():
+        if ids:
+            for row in db.query(model.id, model.name).filter(model.id.in_(ids)).all():
+                names[row.id] = row.name
+
+    return [
+        {
+            "id": a.id,
+            "assignment_type": a.assignment_type,
+            "assignment_id": a.assignment_id,
+            "entity_name": names.get(a.assignment_id, "Unknown"),
+            "role_in_assignment": a.role_in_assignment,
+            "joined_at": a.joined_at,
+        }
+        for a in assignments
+    ]
+
+
 def remove_assignment(
     member_id: uuid.UUID,
     assignment_id: uuid.UUID,

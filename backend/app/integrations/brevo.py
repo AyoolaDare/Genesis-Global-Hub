@@ -5,6 +5,8 @@ Sends transactional emails via the Brevo REST API using httpx.
 No SDK dependency — uses the raw API with the api-key header.
 """
 import logging
+import smtplib
+from email.message import EmailMessage
 
 import httpx
 
@@ -37,11 +39,15 @@ class BrevoClient:
         """
         Send a transactional email via Brevo.
 
-        Returns True if accepted (2xx), False on any error.
+        Falls back to SMTP when Brevo is unavailable or not configured.
         """
         if not settings.BREVO_API_KEY:
-            logger.warning("BREVO_API_KEY not configured — email not sent to %s", to_email)
-            return False
+            return self._send_via_smtp(
+                to_email=to_email,
+                subject=subject,
+                html_content=html_content,
+                text_content=text_content,
+            )
 
         payload: dict = {
             "sender": {
@@ -71,9 +77,53 @@ class BrevoClient:
                 response.status_code,
                 response.text,
             )
-            return False
+            return self._send_via_smtp(
+                to_email=to_email,
+                subject=subject,
+                html_content=html_content,
+                text_content=text_content,
+            )
         except Exception as exc:
             logger.error("Brevo send error: %s", str(exc), exc_info=True)
+            return self._send_via_smtp(
+                to_email=to_email,
+                subject=subject,
+                html_content=html_content,
+                text_content=text_content,
+            )
+
+    def _send_via_smtp(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: str = "",
+    ) -> bool:
+        """Send email through configured SMTP settings as a fallback."""
+        if not settings.SMTP_HOST:
+            logger.warning("SMTP_HOST not configured - email not sent to %s", to_email)
+            return False
+
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = settings.FROM_EMAIL
+        message["To"] = to_email
+        message.set_content(
+            text_content or "Please view this message in an HTML-capable email client."
+        )
+        message.add_alternative(html_content, subtype="html")
+
+        try:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as smtp:
+                if settings.SMTP_USE_TLS:
+                    smtp.starttls()
+                if settings.SMTP_USERNAME:
+                    smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                smtp.send_message(message)
+            logger.info("SMTP email sent: to=%s subject=%s", to_email, subject)
+            return True
+        except Exception as exc:
+            logger.error("SMTP send error: %s", str(exc), exc_info=True)
             return False
 
     def send_password_reset(self, to_email: str, reset_link: str) -> bool:

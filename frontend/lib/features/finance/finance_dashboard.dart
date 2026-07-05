@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/sidebar.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import '../../core/widgets/error_state.dart';
+import '../../providers/sponsor_provider.dart';
 
 // ---------------------------------------------------------------------------
 // Model
@@ -77,7 +78,11 @@ class FinanceDashboard extends ConsumerWidget {
         const SizedBox(width: 8),
       ],
       child: RefreshIndicator(
-        onRefresh: () => ref.refresh(financeDashboardProvider.future),
+        onRefresh: () async {
+          ref.invalidate(sponsorProvider);
+          ref.invalidate(financeDashboardProvider);
+          await ref.read(financeDashboardProvider.future);
+        },
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ref.watch(financeDashboardProvider).when(
@@ -133,6 +138,8 @@ class FinanceDashboard extends ConsumerWidget {
             ),
           ],
         ),
+        const SizedBox(height: 24),
+        const _SponsorDirectorySection(),
       ],
     );
   }
@@ -156,14 +163,14 @@ class FinanceDashboard extends ConsumerWidget {
       ),
       _StatItem(
         label: 'Monthly Revenue',
-        value: _formatCurrency(data.monthlyRevenue),
+        value: _formatCurrencyAmount(data.monthlyRevenue),
         icon: Icons.trending_up_outlined,
         color: AppColors.info,
         subtitle: 'This month',
       ),
       _StatItem(
         label: 'Annual Revenue',
-        value: _formatCurrency(data.annualRevenue),
+        value: _formatCurrencyAmount(data.annualRevenue),
         icon: Icons.account_balance_outlined,
         color: AppColors.secondary,
         subtitle: 'This year',
@@ -183,14 +190,230 @@ class FinanceDashboard extends ConsumerWidget {
       itemBuilder: (_, i) => _StatCard(item: items[i]),
     );
   }
+}
 
-  String _formatCurrency(double amount) {
-    if (amount >= 1000000) {
-      return '₦${(amount / 1000000).toStringAsFixed(1)}M';
-    } else if (amount >= 1000) {
-      return '₦${(amount / 1000).toStringAsFixed(1)}K';
-    }
-    return '₦${amount.toStringAsFixed(0)}';
+// ---------------------------------------------------------------------------
+// Sponsor directory section
+// ---------------------------------------------------------------------------
+
+class _SponsorDirectorySection extends ConsumerWidget {
+  const _SponsorDirectorySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sponsors = ref.watch(sponsorProvider);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Sponsor Details',
+                  style: Theme.of(context).textTheme.titleMedium),
+              TextButton.icon(
+                onPressed: () => context.go('/finance/sponsors'),
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Manage'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          sponsors.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, _) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: ErrorState(
+                message: 'Failed to load sponsors',
+                details: ApiException.from(error)?.message ?? error.toString(),
+                onRetry: () => ref.invalidate(sponsorProvider),
+              ),
+            ),
+            data: (data) {
+              if (data.items.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 32),
+                  child: Center(
+                    child: Text(
+                      'No sponsors yet',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  ),
+                );
+              }
+
+              return ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 420),
+                child: Scrollbar(
+                  thumbVisibility: true,
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: data.items.length,
+                    separatorBuilder: (_, __) => const Divider(
+                      height: 1,
+                      color: AppColors.border,
+                    ),
+                    itemBuilder: (context, index) {
+                      return _SponsorDashboardRow(sponsor: data.items[index]);
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SponsorDashboardRow extends StatelessWidget {
+  final Sponsor sponsor;
+
+  const _SponsorDashboardRow({required this.sponsor});
+
+  @override
+  Widget build(BuildContext context) {
+    final tier = sponsor.category ?? 'Sponsor';
+    final contact = sponsor.phone?.isNotEmpty == true
+        ? sponsor.phone!
+        : (sponsor.email?.isNotEmpty == true ? sponsor.email! : 'No contact');
+
+    return InkWell(
+      onTap: () => context.go('/finance/sponsors/${sponsor.id}'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: AppColors.primary.withOpacity(0.12),
+              foregroundColor: AppColors.primary,
+              child: Text(
+                _initials(sponsor.name),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    sponsor.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    contact,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                tier,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _formatCurrencyAmount(sponsor.totalContributions),
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.success,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            _StatusPill(isActive: sponsor.isActive),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'View sponsor',
+              icon: const Icon(Icons.chevron_right),
+              onPressed: () => context.go('/finance/sponsors/${sponsor.id}'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _initials(String name) {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '?';
+    final first = parts.first.substring(0, 1);
+    final second = parts.length > 1 ? parts.last.substring(0, 1) : '';
+    return '$first$second'.toUpperCase();
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final bool isActive;
+
+  const _StatusPill({required this.isActive});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive ? AppColors.success : AppColors.textSecondary;
+    return Container(
+      width: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        isActive ? 'Active' : 'Inactive',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
   }
 }
 
@@ -429,6 +652,15 @@ class _RecentPaymentsSection extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
+
+String _formatCurrencyAmount(num amount) {
+  if (amount >= 1000000) {
+    return '\u20a6${(amount / 1000000).toStringAsFixed(1)}M';
+  } else if (amount >= 1000) {
+    return '\u20a6${(amount / 1000).toStringAsFixed(1)}K';
+  }
+  return '\u20a6${amount.toStringAsFixed(0)}';
+}
 
 class _StatItem {
   final String label;

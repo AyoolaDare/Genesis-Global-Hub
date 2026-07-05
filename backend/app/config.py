@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # ── Brevo (transactional email) ───────────────────────────────────────────
     BREVO_API_KEY: str = ""
     FROM_EMAIL: str = "noreply@genesisglob.al"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = True
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     # Comma-separated list of allowed origins

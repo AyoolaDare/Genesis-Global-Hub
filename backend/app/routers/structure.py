@@ -7,8 +7,13 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import ensure_entity_scope, get_current_user, require_role
-from app.auth.models import AppUser
+from app.auth.dependencies import (
+    ensure_entity_scope,
+    ensure_member_scope,
+    get_current_user,
+    require_role,
+)
+from app.auth.models import AppUser, UserRole
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
 from app.models.structure import Department as DeptModel, MemberAssignment, Team as TeamModel
@@ -33,6 +38,7 @@ from app.services.structure_service import (
     get_department_members,
     get_group,
     get_group_members,
+    get_member_assignments,
     get_team,
     get_team_members,
     list_departments,
@@ -347,8 +353,27 @@ async def assign_group_leader_endpoint(
 
 # ── Member Assignments ─────────────────────────────────────────────────────────
 
+_LEADER_ASSIGN_ROLES = (UserRole.DEPARTMENT_HEAD, UserRole.TEAM_LEADER, UserRole.GROUP_LEADER)
+
+
+@router.get("/members/{member_id}/assignments", summary="List member's unit assignments")
+async def member_assignments_endpoint(
+    request: Request,
+    member_id: uuid.UUID,
+    current_user: AppUser = Depends(
+        require_role("SUPER_ADMIN", "PASTOR", "DEPARTMENT_HEAD", "TEAM_LEADER", "GROUP_LEADER")
+    ),
+    db: Session = Depends(get_db),
+):
+    if current_user.role in _LEADER_ASSIGN_ROLES:
+        ensure_member_scope(member_id, current_user, request, db)
+    data = get_member_assignments(member_id, db)
+    return success_response(data=data)
+
+
 @router.post("/members/{member_id}/assign", summary="Assign member to dept/team/group", status_code=201)
 async def assign_member_endpoint(
+    request: Request,
     member_id: uuid.UUID,
     body: MemberAssignRequest,
     current_user: AppUser = Depends(
@@ -356,6 +381,9 @@ async def assign_member_endpoint(
     ),
     db: Session = Depends(get_db),
 ):
+    # Leaders may only assign members into units within their own scope
+    if current_user.role in _LEADER_ASSIGN_ROLES:
+        ensure_entity_scope(body.assignment_type, body.assignment_id, current_user, request, db)
     assignment = assign_member(member_id, body, current_user, db)
     return success_response(
         data={
@@ -375,6 +403,7 @@ async def assign_member_endpoint(
     summary="Remove member from assignment",
 )
 async def remove_assignment_endpoint(
+    request: Request,
     member_id: uuid.UUID,
     assignment_id: uuid.UUID,
     current_user: AppUser = Depends(
@@ -382,6 +411,9 @@ async def remove_assignment_endpoint(
     ),
     db: Session = Depends(get_db),
 ):
+    # Leaders may only manage members within their own scope
+    if current_user.role in _LEADER_ASSIGN_ROLES:
+        ensure_member_scope(member_id, current_user, request, db)
     remove_assignment(member_id, assignment_id, db)
     return success_response(message="Assignment removed.")
 

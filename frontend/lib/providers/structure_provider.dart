@@ -114,6 +114,37 @@ class Group {
   }
 }
 
+class MemberUnitAssignment {
+  final String id;
+  final String assignmentType; // DEPARTMENT | TEAM | GROUP
+  final String assignmentId;
+  final String entityName;
+  final String? roleInAssignment;
+  final DateTime? joinedAt;
+
+  const MemberUnitAssignment({
+    required this.id,
+    required this.assignmentType,
+    required this.assignmentId,
+    required this.entityName,
+    this.roleInAssignment,
+    this.joinedAt,
+  });
+
+  factory MemberUnitAssignment.fromJson(Map<String, dynamic> json) {
+    return MemberUnitAssignment(
+      id: json['id'] ?? '',
+      assignmentType: json['assignment_type'] ?? '',
+      assignmentId: json['assignment_id'] ?? '',
+      entityName: json['entity_name'] ?? 'Unknown',
+      roleInAssignment: json['role_in_assignment'],
+      joinedAt: json['joined_at'] != null
+          ? DateTime.tryParse(json['joined_at'].toString())
+          : null,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
@@ -144,4 +175,15 @@ final groupsProvider = FutureProvider<List<Group>>((ref) async {
   final response = await dio.get(ApiEndpoints.groups);
   final data = response.data['data'] as List;
   return data.map((e) => Group.fromJson(e)).toList();
+});
+
+final memberAssignmentsProvider =
+    FutureProvider.family<List<MemberUnitAssignment>, String>(
+        (ref, memberId) async {
+  final dio = ref.read(dioProvider);
+  final response = await dio.get(ApiEndpoints.memberAssignments(memberId));
+  final data = response.data['data'] as List;
+  return data
+      .map((e) => MemberUnitAssignment.fromJson(Map<String, dynamic>.from(e)))
+      .toList();
 });

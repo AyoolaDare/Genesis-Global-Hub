@@ -30,6 +30,9 @@ class ApiEndpoints {
   static const String pendingMembers = '/members/pending';
   static String memberPhoto(String id) => '/members/$id/photo';
   static String memberAssign(String id) => '/members/$id/assign';
+  static String memberAssignments(String id) => '/members/$id/assignments';
+  static String memberAssignmentById(String id, String assignmentId) =>
+      '/members/$id/assign/$assignmentId';
   static const String memberLookup = '/members/lookup';
 
   // Departments

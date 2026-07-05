@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/api_endpoints.dart';
 import '../../providers/members_provider.dart';
+import '../../providers/structure_provider.dart';
 
 class MemberDetailScreen extends ConsumerWidget {
   final String memberId;
@@ -810,37 +811,308 @@ class _SpiritualTab extends StatelessWidget {
   }
 }
 
-class _DepartmentsTab extends StatelessWidget {
+class _DepartmentsTab extends ConsumerWidget {
   final Member member;
 
   const _DepartmentsTab({required this.member});
 
+  IconData _unitIcon(String type) {
+    switch (type) {
+      case 'DEPARTMENT':
+        return Icons.business_outlined;
+      case 'TEAM':
+        return Icons.group_work_outlined;
+      default:
+        return Icons.groups_outlined;
+    }
+  }
+
+  Future<void> _removeAssignment(
+    BuildContext context,
+    WidgetRef ref,
+    MemberUnitAssignment assignment,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Assignment'),
+        content: Text(
+          'Remove ${member.fullName} from '
+          '${assignment.entityName} (${assignment.assignmentType.toLowerCase()})?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.delete(
+        ApiEndpoints.memberAssignmentById(member.id, assignment.id),
+      );
+      ref.invalidate(memberAssignmentsProvider(member.id));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Assignment removed'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ApiException.from(e)?.message ??
+                'Failed to remove assignment.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final assignmentsAsync = ref.watch(memberAssignmentsProvider(member.id));
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: _SectionCard(
-        title: 'Department Memberships',
+        title: 'Units & Posts',
         children: [
-          if (member.departmentIds.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text(
-                'Not assigned to any department',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            )
-          else
-            ...member.departmentIds.map(
-              (id) => ListTile(
-                leading: const Icon(Icons.business_outlined,
-                    color: AppColors.primary),
-                title: Text('Department $id'),
-                contentPadding: EdgeInsets.zero,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Assign to Unit'),
+              onPressed: () => showDialog(
+                context: context,
+                builder: (_) => _AssignUnitDialog(memberId: member.id),
               ),
             ),
+          ),
+          const SizedBox(height: 8),
+          assignmentsAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                'Failed to load assignments: '
+                '${ApiException.from(e)?.message ?? e}',
+                style: const TextStyle(color: AppColors.error),
+              ),
+            ),
+            data: (assignments) {
+              if (assignments.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    'Not assigned to any department, team, or group yet.',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                );
+              }
+              return Column(
+                children: assignments.map((a) {
+                  final details = <String>[
+                    a.assignmentType[0] +
+                        a.assignmentType.substring(1).toLowerCase(),
+                    if (a.roleInAssignment != null &&
+                        a.roleInAssignment!.trim().isNotEmpty)
+                      'Post: ${a.roleInAssignment}',
+                    if (a.joinedAt != null)
+                      'Joined ${DateFormat('dd MMM yyyy').format(a.joinedAt!)}',
+                  ];
+                  return ListTile(
+                    leading: Icon(_unitIcon(a.assignmentType),
+                        color: AppColors.primary),
+                    title: Text(a.entityName),
+                    subtitle: Text(details.join(' • ')),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: AppColors.error),
+                      tooltip: 'Remove from unit',
+                      onPressed: () => _removeAssignment(context, ref, a),
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                  );
+                }).toList(),
+              );
+            },
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _AssignUnitDialog extends ConsumerStatefulWidget {
+  final String memberId;
+
+  const _AssignUnitDialog({required this.memberId});
+
+  @override
+  ConsumerState<_AssignUnitDialog> createState() => _AssignUnitDialogState();
+}
+
+class _AssignUnitDialogState extends ConsumerState<_AssignUnitDialog> {
+  String _unitType = 'DEPARTMENT';
+  String? _unitId;
+  final _postController = TextEditingController();
+  bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _postController.dispose();
+    super.dispose();
+  }
+
+  List<DropdownMenuItem<String>> _unitItems() {
+    switch (_unitType) {
+      case 'DEPARTMENT':
+        final depts = ref.watch(departmentsProvider).valueOrNull ?? [];
+        return depts
+            .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
+            .toList();
+      case 'TEAM':
+        final teams = ref.watch(teamsProvider).valueOrNull ?? [];
+        return teams
+            .map((t) => DropdownMenuItem(
+                value: t.id,
+                child: Text(t.departmentName != null
+                    ? '${t.name} (${t.departmentName})'
+                    : t.name)))
+            .toList();
+      default:
+        final groups = ref.watch(groupsProvider).valueOrNull ?? [];
+        return groups
+            .map((g) => DropdownMenuItem(value: g.id, child: Text(g.name)))
+            .toList();
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_unitId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a unit'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      final dio = ref.read(dioProvider);
+      final post = _postController.text.trim();
+      await dio.post(
+        ApiEndpoints.memberAssign(widget.memberId),
+        data: {
+          'assignment_type': _unitType,
+          'assignment_id': _unitId,
+          if (post.isNotEmpty) 'role_in_assignment': post,
+        },
+      );
+      ref.invalidate(memberAssignmentsProvider(widget.memberId));
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Member assigned successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                ApiException.from(e)?.message ?? 'Failed to assign member.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Assign to Unit'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              value: _unitType,
+              decoration: const InputDecoration(
+                labelText: 'Unit Type',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(
+                    value: 'DEPARTMENT', child: Text('Department')),
+                DropdownMenuItem(value: 'TEAM', child: Text('Team')),
+                DropdownMenuItem(value: 'GROUP', child: Text('Group')),
+              ],
+              onChanged: (v) => setState(() {
+                _unitType = v ?? 'DEPARTMENT';
+                _unitId = null;
+              }),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _unitId,
+              decoration: InputDecoration(
+                labelText: 'Select ${_unitType[0]}'
+                    '${_unitType.substring(1).toLowerCase()}',
+                border: const OutlineInputBorder(),
+              ),
+              items: _unitItems(),
+              onChanged: (v) => setState(() => _unitId = v),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _postController,
+              decoration: const InputDecoration(
+                labelText: 'Post / Position (optional)',
+                hintText: 'e.g. Secretary, Usher, Coordinator',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              _isSubmitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isSubmitting ? null : _submit,
+          child: Text(_isSubmitting ? 'Assigning...' : 'Assign'),
+        ),
+      ],
     );
   }
 }
