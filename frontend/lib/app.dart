@@ -33,6 +33,7 @@ import 'features/medical/patients_list_screen.dart';
 import 'features/medical/new_patient_screen.dart';
 import 'features/medical/patient_detail_screen.dart';
 import 'features/medical/visit_form_screen.dart';
+import 'features/finance/donor_funnel_screen.dart';
 import 'features/finance/finance_dashboard.dart';
 import 'features/finance/sponsors_list_screen.dart';
 import 'features/finance/sponsor_detail_screen.dart';
@@ -291,6 +292,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'payments',
             builder: (context, state) => const PaymentsScreen(),
+          ),
+          GoRoute(
+            path: 'funnel',
+            builder: (context, state) => const DonorFunnelScreen(),
           ),
         ],
       ),

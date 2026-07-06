@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     JSON,
     Numeric,
     String,
@@ -154,6 +155,11 @@ class SponsorPayment(Base):
     next_due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # Funnel stage already fired for the upcoming cycle this row tracks:
+    # 0 = none, 1 = weekly reminder, 2 = week-3 nudge, 3 = final notice.
+    reminder_stage: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
     thank_you_sent_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

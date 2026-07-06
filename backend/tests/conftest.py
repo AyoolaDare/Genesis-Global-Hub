@@ -41,6 +41,7 @@ from app.models import (  # noqa: E402,F401
     medical as _m_medical,
     member as _m_member,
     notification as _m_notification,
+    settings as _m_settings,
     sponsor as _m_sponsor,
     structure as _m_structure,
 )

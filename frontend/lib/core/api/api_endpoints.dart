@@ -33,6 +33,7 @@ class ApiEndpoints {
   static String memberAssignments(String id) => '/members/$id/assignments';
   static String memberAssignmentById(String id, String assignmentId) =>
       '/members/$id/assign/$assignmentId';
+  static String memberPortalAccess(String id) => '/members/$id/portal-access';
   static const String memberLookup = '/members/lookup';
 
   // Departments
@@ -90,6 +91,8 @@ class ApiEndpoints {
       '/giving/contributions/verify/$txRef';
   static const String reconcilePending = '/giving/reconcile-pending';
   static const String financeOps = '/giving/ops';
+  static const String donorFunnel = '/giving/funnel';
+  static const String funnelConfig = '/giving/funnel/config';
   static String verifyFlutterwaveReturn(String txRef) =>
       '/webhooks/flutterwave/verify/$txRef';
   static const String financeReports = '/giving/report/annual';

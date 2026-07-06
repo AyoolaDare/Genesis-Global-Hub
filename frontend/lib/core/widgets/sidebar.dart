@@ -75,6 +75,7 @@ Map<UserRole, List<SidebarItem>> _sidebarConfig = {
     const SidebarItem(label: 'Dashboard', icon: Icons.dashboard_outlined, route: '/finance'),
     const SidebarItem(label: 'Sponsors', icon: Icons.volunteer_activism_outlined, route: '/finance/sponsors'),
     const SidebarItem(label: 'Payments', icon: Icons.payment_outlined, route: '/finance/payments'),
+    const SidebarItem(label: 'Donor Funnel', icon: Icons.filter_alt_outlined, route: '/finance/funnel'),
   ],
   UserRole.hrAdmin: [
     const SidebarItem(label: 'Dashboard', icon: Icons.dashboard_outlined, route: '/hr'),

@@ -5,11 +5,14 @@ Business logic for departments, teams, groups, and member assignments.
 """
 import uuid
 from datetime import datetime, timezone
+from secrets import token_urlsafe
 
+import httpx
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.models import AppUser, UserRole
+from app.config import settings
 from app.core.exceptions import DuplicateRecord, NotFound, PermissionDenied
 from app.models.member import MemberModel
 from app.models.structure import Department, Group, MemberAssignment, Team
@@ -19,6 +22,7 @@ from app.schemas.structure import (
     GroupCreate,
     GroupUpdate,
     MemberAssignRequest,
+    PortalAccessRequest,
     TeamCreate,
     TeamUpdate,
 )
@@ -423,4 +427,144 @@ def remove_assignment(
 
     assignment.left_at = datetime.now(timezone.utc)
     assignment.deleted_at = datetime.now(timezone.utc)
+    db.flush()
+
+
+# ── Portal Access Service ──────────────────────────────────────────────────────
+
+_PORTAL_ROLES = {
+    UserRole.FOLLOW_UP,
+    UserRole.MEDICAL,
+    UserRole.FINANCE_ADMIN,
+    UserRole.HR_ADMIN,
+    UserRole.DEPARTMENT_HEAD,
+    UserRole.TEAM_LEADER,
+    UserRole.GROUP_LEADER,
+}
+
+
+def _serialize_portal_user(user: AppUser | None) -> dict | None:
+    if user is None:
+        return None
+    return {
+        "id": user.id,
+        "email": user.email,
+        "role": user.role.value,
+        "member_id": user.member_id,
+        "is_active": user.is_active,
+        "last_login_at": user.last_login_at,
+    }
+
+
+def get_member_portal_access(member_id: uuid.UUID, db: Session) -> dict | None:
+    user = db.query(AppUser).filter(AppUser.member_id == member_id).first()
+    return _serialize_portal_user(user)
+
+
+def _get_existing_supabase_user_id(email: str) -> uuid.UUID:
+    url = f"{settings.SUPABASE_URL}/auth/v1/admin/users"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}",
+    }
+    response = httpx.get(
+        url,
+        headers=headers,
+        params={"page": 1, "per_page": 1000},
+        timeout=15.0,
+    )
+    if response.status_code != 200:
+        raise PermissionDenied(message="Could not verify existing auth user.")
+
+    for user in response.json().get("users", []):
+        if user.get("email", "").lower() == email.lower():
+            return uuid.UUID(user["id"])
+
+    raise NotFound(message=f"Auth user for {email} not found.")
+
+
+def _supabase_create_or_get_user(email: str, password: str) -> uuid.UUID:
+    if not settings.SUPABASE_SERVICE_KEY:
+        raise PermissionDenied(message="Supabase service key is not configured.")
+
+    url = f"{settings.SUPABASE_URL}/auth/v1/admin/users"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "email": email,
+        "password": password,
+        "email_confirm": True,
+    }
+    response = httpx.post(url, json=payload, headers=headers, timeout=15.0)
+
+    if response.status_code in (200, 201):
+        return uuid.UUID(response.json()["id"])
+
+    if response.status_code == 422:
+        message = response.text.lower()
+        if "registered" in message or "exists" in message:
+            return _get_existing_supabase_user_id(email)
+
+    raise PermissionDenied(message="Could not create portal login in Supabase Auth.")
+
+
+def grant_member_portal_access(
+    member_id: uuid.UUID,
+    data: PortalAccessRequest,
+    db: Session,
+) -> tuple[dict, str | None]:
+    member = db.query(MemberModel).filter(
+        MemberModel.id == member_id,
+        MemberModel.deleted_at.is_(None),
+    ).first()
+    if not member:
+        raise NotFound(message=f"Member {member_id} not found.")
+
+    portal_role = UserRole(data.role)
+    if portal_role not in _PORTAL_ROLES:
+        raise PermissionDenied(message="This role cannot be assigned as a member portal.")
+
+    email = data.email.strip().lower()
+    generated_password = None
+    password = data.temporary_password
+    existing_for_member = db.query(AppUser).filter(AppUser.member_id == member_id).first()
+
+    if existing_for_member is None:
+        if password is None:
+            generated_password = token_urlsafe(12)
+            password = generated_password
+        user_id = _supabase_create_or_get_user(email, password)
+        user = db.get(AppUser, user_id)
+        if user is None:
+            user = AppUser(
+                id=user_id,
+                email=email,
+                role=portal_role,
+                member_id=member_id,
+                is_active=True,
+            )
+            db.add(user)
+        else:
+            user.email = email
+            user.role = portal_role
+            user.member_id = member_id
+            user.is_active = True
+    else:
+        user = existing_for_member
+        user.email = email
+        user.role = portal_role
+        user.is_active = True
+
+    db.flush()
+    return _serialize_portal_user(user), generated_password
+
+
+def revoke_member_portal_access(member_id: uuid.UUID, db: Session) -> None:
+    user = db.query(AppUser).filter(AppUser.member_id == member_id).first()
+    if not user:
+        raise NotFound(message=f"Portal access for member {member_id} not found.")
+    user.is_active = False
     db.flush()

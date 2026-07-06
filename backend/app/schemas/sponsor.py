@@ -137,5 +137,13 @@ class AnnualSponsorshipReport(BaseSchema):
     by_tier: dict = {}
 
 
+class FunnelConfigUpdate(BaseSchema):
+    """Partial update for the donor reminder funnel schedule."""
+    enabled: Optional[bool] = None
+    stage1_days_before_due: Optional[int] = Field(None, ge=1, le=60)
+    stage2_days_overdue: Optional[int] = Field(None, ge=1, le=120)
+    stage3_days_overdue: Optional[int] = Field(None, ge=2, le=180)
+
+
 # Rebuild for forward refs
 SponsorWithPaymentsResponse.model_rebuild()

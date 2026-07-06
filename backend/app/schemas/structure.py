@@ -117,6 +117,15 @@ class MemberAssignRequest(BaseSchema):
     role_in_assignment: Optional[str] = Field(None, max_length=100)
 
 
+class PortalAccessRequest(BaseSchema):
+    email: str = Field(..., min_length=5, max_length=255)
+    role: str = Field(
+        ...,
+        pattern="^(FOLLOW_UP|MEDICAL|FINANCE_ADMIN|HR_ADMIN|DEPARTMENT_HEAD|TEAM_LEADER|GROUP_LEADER)$",
+    )
+    temporary_password: Optional[str] = Field(None, min_length=8, max_length=128)
+
+
 class MemberAssignmentResponse(BaseSchema):
     id: uuid.UUID
     member_id: uuid.UUID

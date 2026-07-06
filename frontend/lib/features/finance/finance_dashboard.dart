@@ -126,6 +126,12 @@ class FinanceDashboard extends ConsumerWidget {
     return ShellLayout(
       title: 'Sponsor Dashboard',
       actions: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.filter_alt_outlined, size: 18),
+          label: const Text('Donor Funnel'),
+          onPressed: () => context.go('/finance/funnel'),
+        ),
+        const SizedBox(width: 8),
         ElevatedButton.icon(
           icon: const Icon(Icons.add, size: 18),
           label: const Text('Add Sponsor'),
@@ -264,35 +270,43 @@ class _SystemHealthSection extends ConsumerWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primaryDark, AppColors.primary],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
           BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: AppColors.primaryDark.withOpacity(0.35),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: ops.when(
         loading: () => const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: Center(
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: AppColors.white),
+          ),
         ),
         error: (e, _) => Row(
           children: [
             const Icon(Icons.cloud_off_outlined,
-                color: AppColors.textSecondary, size: 20),
+                color: Colors.white70, size: 20),
             const SizedBox(width: 8),
             const Expanded(
               child: Text('System health unavailable',
-                  style: TextStyle(color: AppColors.textSecondary)),
+                  style: TextStyle(color: Colors.white70)),
             ),
             TextButton(
               onPressed: () => ref.invalidate(financeOpsProvider),
-              child: const Text('Retry'),
+              child: const Text('Retry',
+                  style: TextStyle(color: AppColors.secondaryLight)),
             ),
           ],
         ),
@@ -304,14 +318,15 @@ class _SystemHealthSection extends ConsumerWidget {
   Widget _buildHealth(
       BuildContext context, WidgetRef ref, FinanceOpsData data) {
     final statusColor = data.healthy
-        ? AppColors.success
+        ? AppColors.successLight
         : (data.stuckPending > 0 || data.queueFailed > 0
-            ? AppColors.error
-            : AppColors.warning);
+            ? AppColors.errorLight
+            : AppColors.warningLight);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ── Header row ────────────────────────────────────────────────────
         Wrap(
           alignment: WrapAlignment.spaceBetween,
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -321,78 +336,87 @@ class _SystemHealthSection extends ConsumerWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  data.healthy
-                      ? Icons.verified_outlined
-                      : Icons.report_problem_outlined,
-                  color: statusColor,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text('System Health',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(width: 12),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(20),
+                    color: statusColor.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    data.healthy ? 'All systems operational' : 'Needs attention',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: statusColor,
+                  child: Icon(
+                    data.healthy
+                        ? Icons.verified_outlined
+                        : Icons.report_problem_outlined,
+                    color: statusColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'System Health',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.white,
+                      ),
                     ),
-                  ),
+                    Text(
+                      data.healthy
+                          ? 'All systems operational'
+                          : 'Needs attention',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-            OutlinedButton.icon(
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.white,
+                foregroundColor: AppColors.primary,
+                elevation: 0,
+              ),
               icon: const Icon(Icons.sync, size: 16),
               label: const Text('Recheck Payments'),
               onPressed: () => _recheckPayments(context, ref),
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
+
+        // ── Counters ──────────────────────────────────────────────────────
         Wrap(
-          spacing: 24,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           children: [
             _HealthCounter(
-              label: 'Pending payments',
-              value: '${data.pending}',
-              highlight: data.pending > 0,
-            ),
+                label: 'Pending', value: '${data.pending}',
+                highlight: data.pending > 0),
             _HealthCounter(
-              label: 'Stuck > 30 min',
-              value: '${data.stuckPending}',
-              highlight: data.stuckPending > 0,
-            ),
+                label: 'Stuck > 30 min', value: '${data.stuckPending}',
+                highlight: data.stuckPending > 0),
             _HealthCounter(
-              label: 'Completed today',
-              value: '${data.completedToday}',
-            ),
+                label: 'Completed today', value: '${data.completedToday}'),
             _HealthCounter(
-              label: 'Thank-you gaps (7d)',
-              value: '${data.missingThankYou}',
-              highlight: data.missingThankYou > 0,
-            ),
+                label: 'Thank-you gaps', value: '${data.missingThankYou}',
+                highlight: data.missingThankYou > 0),
             _HealthCounter(
-              label: 'Notifications queued',
-              value: '${data.queuePending}',
-            ),
+                label: 'Queue', value: '${data.queuePending}'),
             _HealthCounter(
-              label: 'Notifications failed',
-              value: '${data.queueFailed}',
-              highlight: data.queueFailed > 0,
-            ),
+                label: 'Failed sends', value: '${data.queueFailed}',
+                highlight: data.queueFailed > 0),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
+
+        // ── Provider status ───────────────────────────────────────────────
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -404,35 +428,43 @@ class _SystemHealthSection extends ConsumerWidget {
                 label: 'Webhook',
                 ok: data.providers['flutterwave_webhook'] ?? false),
             _ProviderChip(
-                label: 'SMS (Termii)',
+                label: 'SMS · Termii',
                 ok: data.providers['termii_sms'] ?? false),
             _ProviderChip(
-                label: 'Email (Brevo)',
+                label: 'Email · Brevo',
                 ok: data.providers['brevo_email'] ?? false),
           ],
         ),
+
+        // ── Alerts ────────────────────────────────────────────────────────
         if (data.alerts.isNotEmpty) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           ...data.alerts.map(
             (alert) => Container(
               width: double.infinity,
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.all(10),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: AppColors.warning.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.warning.withOpacity(0.35)),
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: AppColors.warningLight.withOpacity(0.45)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(Icons.info_outline,
-                      size: 15, color: AppColors.warning),
+                      size: 15, color: AppColors.warningLight),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(alert,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textPrimary)),
+                    child: Text(
+                      alert,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: AppColors.white),
+                    ),
                   ),
                 ],
               ),
@@ -478,22 +510,35 @@ class _HealthCounter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: highlight ? AppColors.error : AppColors.textPrimary,
-          ),
+    return Container(
+      constraints: const BoxConstraints(minWidth: 108),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: highlight
+              ? AppColors.errorLight.withOpacity(0.6)
+              : Colors.white.withOpacity(0.12),
         ),
-        Text(label,
-            style: const TextStyle(
-                fontSize: 11, color: AppColors.textSecondary)),
-      ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: highlight ? AppColors.errorLight : AppColors.white,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: Colors.white70)),
+        ],
+      ),
     );
   }
 }
@@ -506,26 +551,29 @@ class _ProviderChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = ok ? AppColors.success : AppColors.error;
+    final color = ok ? AppColors.successLight : AppColors.errorLight;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: Colors.white.withOpacity(0.08),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withOpacity(0.55)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(ok ? Icons.check_circle : Icons.cancel,
-              size: 13, color: color),
-          const SizedBox(width: 5),
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: color,
+              color: AppColors.white,
             ),
           ),
         ],

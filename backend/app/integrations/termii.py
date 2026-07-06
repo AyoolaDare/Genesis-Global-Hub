@@ -40,6 +40,11 @@ TEMPLATES: dict[str, str] = {
         "Dear {name}, your Genesis Global sponsorship of N{amount} was due on {date}. "
         "Please reach out if you need assistance. God bless!"
     ),
+    "payment_final_notice": (
+        "Dear {name}, this is a final reminder: your Genesis Global sponsorship of "
+        "N{amount} due {date} is still outstanding as this cycle closes. "
+        "We'd love to keep you on board — reply or call us if anything has changed. God bless!"
+    ),
     "follow_up_assigned": (
         "Hello {name}, you have been assigned a new follow-up contact: {contact_name}. "
         "Please reach out within 48 hours."

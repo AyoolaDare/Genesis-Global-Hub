@@ -885,6 +885,7 @@ class _DepartmentsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final assignmentsAsync = ref.watch(memberAssignmentsProvider(member.id));
+    final role = ref.watch(currentRoleProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -902,6 +903,10 @@ class _DepartmentsTab extends ConsumerWidget {
               ),
             ),
           ),
+          if (role == UserRole.superAdmin) ...[
+            const SizedBox(height: 16),
+            _PortalAccessPanel(member: member),
+          ],
           const SizedBox(height: 8),
           assignmentsAsync.when(
             loading: () => const Padding(
@@ -1111,6 +1116,339 @@ class _AssignUnitDialogState extends ConsumerState<_AssignUnitDialog> {
         ElevatedButton(
           onPressed: _isSubmitting ? null : _submit,
           child: Text(_isSubmitting ? 'Assigning...' : 'Assign'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PortalAccessPanel extends ConsumerWidget {
+  final Member member;
+
+  const _PortalAccessPanel({required this.member});
+
+  String _roleLabel(String role) {
+    switch (role) {
+      case 'FOLLOW_UP':
+        return 'Follow-up Portal';
+      case 'MEDICAL':
+        return 'Medical Portal';
+      case 'FINANCE_ADMIN':
+        return 'Sponsors Portal';
+      case 'HR_ADMIN':
+        return 'HR Portal';
+      case 'DEPARTMENT_HEAD':
+        return 'Department Head Portal';
+      case 'TEAM_LEADER':
+        return 'Team Leader Portal';
+      case 'GROUP_LEADER':
+        return 'Group Leader Portal';
+      default:
+        return role;
+    }
+  }
+
+  Future<void> _revoke(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Revoke Portal Access'),
+        content: Text('Disable ${member.fullName}\'s portal login?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await ref.read(structureActionsProvider).revokePortalAccess(member.id);
+      ref.invalidate(memberPortalAccessProvider(member.id));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Portal access revoked'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ApiException.from(e)?.message ??
+                'Failed to revoke portal access.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final portalAsync = ref.watch(memberPortalAccessProvider(member.id));
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: portalAsync.when(
+        loading: () => const SizedBox(
+          height: 48,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (e, _) => Row(
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.error),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                ApiException.from(e)?.message ?? 'Failed to load portal access.',
+                style: const TextStyle(color: AppColors.error),
+              ),
+            ),
+          ],
+        ),
+        data: (access) {
+          final hasAccess = access != null && access.isActive;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.admin_panel_settings_outlined,
+                      color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Portal Access',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => _PortalAccessDialog(
+                        member: member,
+                        access: access,
+                      ),
+                    ),
+                    icon: Icon(hasAccess ? Icons.swap_horiz : Icons.login,
+                        size: 16),
+                    label: Text(hasAccess ? 'Change' : 'Grant'),
+                  ),
+                  if (hasAccess) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: 'Revoke portal access',
+                      onPressed: () => _revoke(context, ref),
+                      icon: const Icon(Icons.block, color: AppColors.error),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (hasAccess)
+                Text(
+                  '${_roleLabel(access.role)} • ${access.email}',
+                  style: const TextStyle(color: AppColors.textSecondary),
+                )
+              else
+                const Text(
+                  'No portal login assigned yet.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PortalAccessDialog extends ConsumerStatefulWidget {
+  final Member member;
+  final MemberPortalAccess? access;
+
+  const _PortalAccessDialog({
+    required this.member,
+    this.access,
+  });
+
+  @override
+  ConsumerState<_PortalAccessDialog> createState() =>
+      _PortalAccessDialogState();
+}
+
+class _PortalAccessDialogState extends ConsumerState<_PortalAccessDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
+  late String _role;
+  bool _isSaving = false;
+  String? _error;
+
+  static const _roles = [
+    ('FOLLOW_UP', 'Follow-up Portal'),
+    ('MEDICAL', 'Medical Portal'),
+    ('FINANCE_ADMIN', 'Sponsors Portal'),
+    ('HR_ADMIN', 'HR Portal'),
+    ('DEPARTMENT_HEAD', 'Department Head Portal'),
+    ('TEAM_LEADER', 'Team Leader Portal'),
+    ('GROUP_LEADER', 'Group Leader Portal'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(
+      text: widget.access?.email ?? widget.member.email ?? '',
+    );
+    _passwordController = TextEditingController();
+    _role = widget.access?.role ?? 'FOLLOW_UP';
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+
+    try {
+      final result = await ref.read(structureActionsProvider).savePortalAccess(
+            memberId: widget.member.id,
+            email: _emailController.text.trim(),
+            role: _role,
+            temporaryPassword: _passwordController.text,
+          );
+      ref.invalidate(memberPortalAccessProvider(widget.member.id));
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      final password = result.temporaryPassword;
+      if (password != null && password.isNotEmpty) {
+        await showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Temporary Password'),
+            content: SelectableText(password),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Portal access saved'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+        _error = ApiException.from(e)?.message ?? 'Failed to save portal access.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Portal Access'),
+      content: SizedBox(
+        width: 460,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_error != null) ...[
+                Text(_error!, style: const TextStyle(color: AppColors.error)),
+                const SizedBox(height: 12),
+              ],
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Login Email *',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final value = v?.trim() ?? '';
+                  if (value.isEmpty) return 'Email is required';
+                  if (!value.contains('@')) return 'Enter a valid email';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _role,
+                decoration: const InputDecoration(
+                  labelText: 'Portal',
+                  border: OutlineInputBorder(),
+                ),
+                items: _roles
+                    .map((role) => DropdownMenuItem(
+                          value: role.$1,
+                          child: Text(role.$2),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _role = v ?? 'FOLLOW_UP'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Temporary Password',
+                  hintText: 'Leave blank to auto-generate for new accounts',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final value = v?.trim() ?? '';
+                  if (value.isNotEmpty && value.length < 8) {
+                    return 'Use at least 8 characters';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isSaving ? null : _save,
+          child: Text(_isSaving ? 'Saving...' : 'Save Access'),
         ),
       ],
     );

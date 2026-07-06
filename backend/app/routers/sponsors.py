@@ -31,7 +31,13 @@ from app.core.exceptions import NotFound
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
 from app.models.sponsor import SponsorPayment
-from app.schemas.sponsor import InitiatePaymentRequest, SponsorCreate, SponsorPaymentCreate, SponsorUpdate
+from app.schemas.sponsor import (
+    FunnelConfigUpdate,
+    InitiatePaymentRequest,
+    SponsorCreate,
+    SponsorPaymentCreate,
+    SponsorUpdate,
+)
 from app.services.sponsor_service import (
     create_sponsor,
     get_annual_report,
@@ -333,6 +339,57 @@ async def finance_dashboard_endpoint(
 ):
     dashboard = get_finance_dashboard(db)
     return success_response(data=dashboard)
+
+
+@router.get("/giving/funnel", summary="Donor payment funnel (status × tenure)")
+@router.get("/finance/funnel", summary="Donor payment funnel (status × tenure)")
+async def donor_funnel_endpoint(
+    current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Donor tracking funnel: every active sponsor with their payment status
+    (PAID / PENDING / OVERDUE), giving tenure, funnel reminder stage, payment
+    consistency label, and a status × tenure summary matrix.
+    """
+    from app.services.funnel_service import get_donor_funnel
+
+    return success_response(data=get_donor_funnel(db))
+
+
+@router.get("/giving/funnel/config", summary="Get reminder funnel schedule")
+@router.get("/finance/funnel/config", summary="Get reminder funnel schedule")
+async def get_funnel_config_endpoint(
+    current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """Current reminder funnel schedule (defaults merged in)."""
+    from app.services.funnel_service import get_funnel_config
+
+    return success_response(data=get_funnel_config(db))
+
+
+@router.put("/giving/funnel/config", summary="Update reminder funnel schedule")
+@router.put("/finance/funnel/config", summary="Update reminder funnel schedule")
+async def update_funnel_config_endpoint(
+    body: FunnelConfigUpdate,
+    current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Update the reminder funnel schedule. The daily funnel task re-reads this
+    on every run, so changes take effect from the next run without a deploy.
+    """
+    from app.core.exceptions import ValidationError
+    from app.services.funnel_service import update_funnel_config
+
+    try:
+        config = update_funnel_config(
+            db, body.model_dump(exclude_none=True), current_user.id
+        )
+    except ValueError as exc:
+        raise ValidationError(message=str(exc))
+    return success_response(data=config, message="Funnel schedule updated.")
 
 
 @router.get("/giving/ops", summary="Giving pipeline health snapshot")

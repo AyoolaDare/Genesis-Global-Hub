@@ -149,16 +149,16 @@ def _sponsors_with_latest_due(db) -> list:
     return list(latest.values())
 
 
-def _send_overdue_sms_with_link(db, sponsor, due_date) -> None:
+def _send_overdue_sms_with_link(db, sponsor, due_date, template_key: str = "payment_overdue") -> None:
     """
-    Render the payment_overdue template, append a fresh Flutterwave payment
+    Render the given overdue template, append a fresh Flutterwave payment
     link (when available), and SMS it to the sponsor. Raises on send failure
     so callers can log per-sponsor errors.
     """
     from app.integrations.termii import termii, TEMPLATES
 
     link = generate_sponsor_payment_link(db, sponsor)
-    message = TEMPLATES["payment_overdue"].format(
+    message = TEMPLATES[template_key].format(
         name=sponsor.full_name.split()[0],
         amount=f"{float(sponsor.amount):,.0f}",
         date=due_date.strftime("%d %b %Y"),
@@ -171,79 +171,80 @@ def _send_overdue_sms_with_link(db, sponsor, due_date) -> None:
 @celery_app.task(name="check_overdue_payments", acks_late=True)
 def check_overdue_payments() -> dict:
     """
-    Daily cron job to check for overdue sponsor payments.
+    Daily reminder funnel for recurring sponsor payments.
 
-    Logic (based on the latest COMPLETED payment's next_due_date):
-      - 0-3 days BEFORE due: send reminder (if none sent in last 30 days)
-      - 1-6 days AFTER due: send overdue reminder SMS
-      - 7+ days AFTER due: send escalation alert to finance coordinator + overdue SMS
+    Three configurable stages per payment cycle, keyed off the latest
+    COMPLETED payment's next_due_date and tracked via reminder_stage on that
+    row (each stage fires exactly once per cycle; a new payment starts a new
+    cycle with stage 0):
+
+      Stage 1 — weekly reminder:  within stage1_days_before_due days of the
+                due date (or just past it), a friendly reminder with a fresh
+                payment link (SMS/WhatsApp + email).
+      Stage 2 — week-3 nudge:     once stage2_days_overdue days overdue, a
+                firmer overdue SMS with a payment link.
+      Stage 3 — final notice:     once stage3_days_overdue days overdue, a
+                final-notice SMS with a payment link, plus an escalation
+                email to the finance admins.
+
+    The schedule lives in app_settings ("finance.funnel") and is editable
+    from the Donor Funnel screen; this task re-reads it on every run.
 
     Returns:
-        Dict with keys: reminders_sent, overdue_alerts_sent, escalations_sent.
+        Dict with keys: stage1_sent, stage2_sent, stage3_sent, escalations_sent
+        (plus legacy aliases reminders_sent / overdue_alerts_sent).
     """
+    from app.services.funnel_service import get_funnel_config
     from app.workers.tasks.notification_tasks import send_payment_reminder
 
-    stats = {"reminders_sent": 0, "overdue_alerts_sent": 0, "escalations_sent": 0}
+    stats = {
+        "stage1_sent": 0,
+        "stage2_sent": 0,
+        "stage3_sent": 0,
+        "escalations_sent": 0,
+    }
     today = date.today()
-    thirty_days_ago = today - timedelta(days=30)
 
     try:
         with get_db_context() as db:
+            config = get_funnel_config(db)
+            if not config.get("enabled", True):
+                stats["skipped"] = "funnel disabled in config"
+                logger.info("check_overdue_payments: funnel disabled — skipping run")
+                return stats
+
+            s1_before = int(config["stage1_days_before_due"])
+            s2_overdue = int(config["stage2_days_overdue"])
+            s3_overdue = int(config["stage3_days_overdue"])
+
             for sponsor, payment in _sponsors_with_latest_due(db):
                 due_date = payment.next_due_date
                 days_until_due = (due_date - today).days   # negative = overdue
                 days_overdue = -days_until_due              # positive = overdue
+                stage = int(payment.reminder_stage or 0)
 
-                # Check if we sent a reminder recently (within 30 days)
-                recently_reminded = (
-                    payment.reminder_sent_at is not None
-                    and payment.reminder_sent_at.date() > thirty_days_ago
-                )
-
-                # 1. 0-3 days before due — send upcoming reminder
-                if 0 <= days_until_due <= 3 and not recently_reminded:
-                    send_payment_reminder.delay(str(sponsor.id))
-                    stats["reminders_sent"] += 1
-                    logger.info(
-                        "check_overdue_payments: queued reminder for sponsor=%s due=%s",
-                        sponsor.id,
-                        due_date,
-                    )
-
-                # 2. 1-6 days overdue — send gentle overdue SMS with pay link
-                elif 1 <= days_overdue <= 6 and not recently_reminded:
+                # Stage 3 — final notice + admin escalation
+                if days_overdue >= s3_overdue and stage < 3:
                     if sponsor.phone:
                         try:
-                            _send_overdue_sms_with_link(db, sponsor, due_date)
-                            payment.reminder_sent_at = datetime.now(timezone.utc)
-                            db.flush()
-                            stats["overdue_alerts_sent"] += 1
+                            _send_overdue_sms_with_link(
+                                db, sponsor, due_date, template_key="payment_final_notice"
+                            )
                         except Exception as sms_exc:
                             logger.error(
-                                "check_overdue_payments SMS error: sponsor=%s error=%s",
+                                "funnel stage3 SMS error: sponsor=%s error=%s",
                                 sponsor.id,
                                 str(sms_exc),
                             )
+                    payment.reminder_stage = 3
+                    payment.reminder_sent_at = datetime.now(timezone.utc)
+                    db.flush()
+                    stats["stage3_sent"] += 1
 
-                # 3. 7+ days overdue — escalate to coordinator + send SMS with pay link
-                elif days_overdue >= 7 and not recently_reminded:
-                    if sponsor.phone:
-                        try:
-                            _send_overdue_sms_with_link(db, sponsor, due_date)
-                            payment.reminder_sent_at = datetime.now(timezone.utc)
-                            db.flush()
-                        except Exception as sms_exc:
-                            logger.error(
-                                "check_overdue_payments escalation SMS error: sponsor=%s error=%s",
-                                sponsor.id,
-                                str(sms_exc),
-                            )
-
-                    # Notify finance admin via email
                     from app.workers.tasks.notification_tasks import send_admin_notification
                     send_admin_notification.delay(
                         admin_email=None,
-                        subject=f"Overdue Sponsorship Alert — {sponsor.full_name}",
+                        subject=f"FINAL NOTICE sent — {sponsor.full_name} still unpaid",
                         message=(
                             f"Sponsor: {sponsor.full_name}\n"
                             f"Phone: {sponsor.phone or 'N/A'}\n"
@@ -252,21 +253,58 @@ def check_overdue_payments() -> dict:
                             f"Tier: {sponsor.sponsorship_tier.value}\n"
                             f"Due Date: {due_date}\n"
                             f"Days Overdue: {days_overdue}\n\n"
-                            f"Please follow up with this sponsor."
+                            f"The final funnel reminder has been sent. "
+                            f"Please follow up personally with this sponsor."
                         ),
                     )
                     stats["escalations_sent"] += 1
                     logger.info(
-                        "check_overdue_payments: escalated sponsor=%s days_overdue=%s",
+                        "funnel: stage3 final notice sponsor=%s days_overdue=%s",
                         sponsor.id,
                         days_overdue,
+                    )
+
+                # Stage 2 — week-3 nudge
+                elif days_overdue >= s2_overdue and stage < 2:
+                    if sponsor.phone:
+                        try:
+                            _send_overdue_sms_with_link(db, sponsor, due_date)
+                        except Exception as sms_exc:
+                            logger.error(
+                                "funnel stage2 SMS error: sponsor=%s error=%s",
+                                sponsor.id,
+                                str(sms_exc),
+                            )
+                    payment.reminder_stage = 2
+                    payment.reminder_sent_at = datetime.now(timezone.utc)
+                    db.flush()
+                    stats["stage2_sent"] += 1
+                    logger.info(
+                        "funnel: stage2 nudge sponsor=%s days_overdue=%s",
+                        sponsor.id,
+                        days_overdue,
+                    )
+
+                # Stage 1 — weekly reminder (just before due, or freshly overdue)
+                elif days_until_due <= s1_before and days_overdue < s2_overdue and stage < 1:
+                    send_payment_reminder.delay(str(sponsor.id))
+                    payment.reminder_stage = 1
+                    db.flush()
+                    stats["stage1_sent"] += 1
+                    logger.info(
+                        "funnel: stage1 reminder queued sponsor=%s due=%s",
+                        sponsor.id,
+                        due_date,
                     )
 
     except Exception as exc:
         logger.error("check_overdue_payments fatal error: %s", str(exc), exc_info=True)
         stats["error"] = str(exc)
 
-    logger.info("check_overdue_payments stats: %s", stats)
+    # Legacy aliases so existing dashboards/log parsers keep working
+    stats["reminders_sent"] = stats["stage1_sent"]
+    stats["overdue_alerts_sent"] = stats["stage2_sent"] + stats["stage3_sent"]
+    logger.info("check_overdue_payments (funnel) stats: %s", stats)
     return stats
 
 

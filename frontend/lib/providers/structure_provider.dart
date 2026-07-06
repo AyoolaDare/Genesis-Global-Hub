@@ -145,6 +145,47 @@ class MemberUnitAssignment {
   }
 }
 
+class MemberPortalAccess {
+  final String id;
+  final String email;
+  final String role;
+  final String memberId;
+  final bool isActive;
+  final DateTime? lastLoginAt;
+
+  const MemberPortalAccess({
+    required this.id,
+    required this.email,
+    required this.role,
+    required this.memberId,
+    required this.isActive,
+    this.lastLoginAt,
+  });
+
+  factory MemberPortalAccess.fromJson(Map<String, dynamic> json) {
+    return MemberPortalAccess(
+      id: json['id']?.toString() ?? '',
+      email: json['email'] ?? '',
+      role: json['role'] ?? '',
+      memberId: json['member_id']?.toString() ?? '',
+      isActive: json['is_active'] ?? false,
+      lastLoginAt: json['last_login_at'] != null
+          ? DateTime.tryParse(json['last_login_at'].toString())
+          : null,
+    );
+  }
+}
+
+class PortalAccessResult {
+  final MemberPortalAccess user;
+  final String? temporaryPassword;
+
+  const PortalAccessResult({
+    required this.user,
+    this.temporaryPassword,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
@@ -187,3 +228,52 @@ final memberAssignmentsProvider =
       .map((e) => MemberUnitAssignment.fromJson(Map<String, dynamic>.from(e)))
       .toList();
 });
+
+final memberPortalAccessProvider =
+    FutureProvider.family<MemberPortalAccess?, String>((ref, memberId) async {
+  final dio = ref.read(dioProvider);
+  final response = await dio.get(ApiEndpoints.memberPortalAccess(memberId));
+  final data = response.data['data'];
+  if (data == null) return null;
+  return MemberPortalAccess.fromJson(Map<String, dynamic>.from(data));
+});
+
+final structureActionsProvider = Provider<StructureActions>((ref) {
+  return StructureActions(ref);
+});
+
+class StructureActions {
+  final Ref _ref;
+
+  StructureActions(this._ref);
+
+  Future<PortalAccessResult> savePortalAccess({
+    required String memberId,
+    required String email,
+    required String role,
+    String? temporaryPassword,
+  }) async {
+    final dio = _ref.read(dioProvider);
+    final response = await dio.post(
+      ApiEndpoints.memberPortalAccess(memberId),
+      data: {
+        'email': email,
+        'role': role,
+        if (temporaryPassword != null && temporaryPassword.trim().isNotEmpty)
+          'temporary_password': temporaryPassword.trim(),
+      },
+    );
+    final data = Map<String, dynamic>.from(response.data['data']);
+    return PortalAccessResult(
+      user: MemberPortalAccess.fromJson(
+        Map<String, dynamic>.from(data['user']),
+      ),
+      temporaryPassword: data['temporary_password'],
+    );
+  }
+
+  Future<void> revokePortalAccess(String memberId) async {
+    final dio = _ref.read(dioProvider);
+    await dio.delete(ApiEndpoints.memberPortalAccess(memberId));
+  }
+}

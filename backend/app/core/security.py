@@ -237,6 +237,30 @@ def build_user_scope(user_id: uuid.UUID, db: Session) -> dict[str, list[str]]:
         ).fetchall()
         scope["groups"] = [str(r[0]) for r in group_rows]
 
+        from app.auth.models import AppUser
+        from app.models.structure import MemberAssignment
+
+        linked_user = db.get(AppUser, user_id)
+        member_assignment_rows = []
+        if linked_user and linked_user.member_id:
+            member_assignment_rows = db.query(
+                MemberAssignment.assignment_type,
+                MemberAssignment.assignment_id,
+            ).filter(
+                MemberAssignment.member_id == linked_user.member_id,
+                MemberAssignment.left_at.is_(None),
+                MemberAssignment.deleted_at.is_(None),
+            ).all()
+
+        for assignment_type, assignment_id in member_assignment_rows:
+            key = {
+                "DEPARTMENT": "departments",
+                "TEAM": "teams",
+                "GROUP": "groups",
+            }.get(str(assignment_type).upper())
+            if key and str(assignment_id) not in scope[key]:
+                scope[key].append(str(assignment_id))
+
     except Exception as exc:
         logger.error("Failed to build scope for user %s: %s", user_id, exc)
 

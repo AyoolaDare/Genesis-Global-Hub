@@ -24,6 +24,7 @@ from app.schemas.structure import (
     DepartmentUpdate,
     GroupCreate,
     MemberAssignRequest,
+    PortalAccessRequest,
     TeamCreate,
 )
 from app.services.structure_service import (
@@ -39,12 +40,15 @@ from app.services.structure_service import (
     get_group,
     get_group_members,
     get_member_assignments,
+    get_member_portal_access,
     get_team,
     get_team_members,
+    grant_member_portal_access,
     list_departments,
     list_groups,
     list_teams,
     remove_assignment,
+    revoke_member_portal_access,
     update_department,
 )
 
@@ -416,5 +420,39 @@ async def remove_assignment_endpoint(
         ensure_member_scope(member_id, current_user, request, db)
     remove_assignment(member_id, assignment_id, db)
     return success_response(message="Assignment removed.")
+
+
+@router.get("/members/{member_id}/portal-access", summary="Get member portal access")
+async def get_member_portal_access_endpoint(
+    member_id: uuid.UUID,
+    current_user: AppUser = Depends(require_role("SUPER_ADMIN")),
+    db: Session = Depends(get_db),
+):
+    data = get_member_portal_access(member_id, db)
+    return success_response(data=data)
+
+
+@router.post("/members/{member_id}/portal-access", summary="Grant or change member portal access")
+async def grant_member_portal_access_endpoint(
+    member_id: uuid.UUID,
+    body: PortalAccessRequest,
+    current_user: AppUser = Depends(require_role("SUPER_ADMIN")),
+    db: Session = Depends(get_db),
+):
+    user, temporary_password = grant_member_portal_access(member_id, body, db)
+    data = {"user": user}
+    if temporary_password:
+        data["temporary_password"] = temporary_password
+    return success_response(data=data, message="Portal access saved.")
+
+
+@router.delete("/members/{member_id}/portal-access", summary="Revoke member portal access")
+async def revoke_member_portal_access_endpoint(
+    member_id: uuid.UUID,
+    current_user: AppUser = Depends(require_role("SUPER_ADMIN")),
+    db: Session = Depends(get_db),
+):
+    revoke_member_portal_access(member_id, db)
+    return success_response(message="Portal access revoked.")
 
 
