@@ -58,6 +58,7 @@ class SponsorDetailScreen extends ConsumerWidget {
                 onStartFlutterwave: () =>
                     _showFlutterwavePaymentSheet(context, ref, sponsor),
                 onSendReminder: () => _sendReminder(context, ref, sponsor),
+                onRecheck: () => _recheckPayments(context, ref, sponsor),
                 onVerifyPayment: (payment) =>
                     _verifyPayment(context, ref, sponsor, payment),
                 onSendThankYou: (payment) =>
@@ -114,6 +115,65 @@ class SponsorDetailScreen extends ConsumerWidget {
       fallbackError: 'Failed to send reminder.',
       footnote: 'Ask the supporter to confirm they received the SMS/email.',
     );
+  }
+
+  /// Re-checks every pending payment against Flutterwave and completes the
+  /// ones that succeeded (sending the thank-you inline), then refreshes the
+  /// table. This is the one-click "recheck for me" the finance admin wants.
+  Future<void> _recheckPayments(
+      BuildContext context, WidgetRef ref, Sponsor sponsor) async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final dio = ref.read(dioProvider);
+      final response = await dio.post(ApiEndpoints.reconcilePending);
+      navigator.pop();
+
+      final data = response.data['data'] as Map?;
+      final completed = (data?['completed'] as num?)?.toInt() ?? 0;
+      final checked = (data?['checked'] as num?)?.toInt() ?? 0;
+      final serverMessage = (response.data['message'] as String?)?.trim();
+      final ok = completed > 0;
+      final message = (serverMessage != null && serverMessage.isNotEmpty)
+          ? serverMessage
+          : 'Checked $checked pending payment(s); $completed completed.';
+
+      // Refresh so any newly-completed payment shows its updated status.
+      ref.invalidate(sponsorDetailProvider(sponsorId));
+
+      if (context.mounted) {
+        _showResultDialog(
+          context,
+          sponsor,
+          ok: ok,
+          title: ok ? 'Payments Updated' : 'No Change Yet',
+          message: message,
+          footnote: ok
+              ? null
+              : 'Payments under ~15 minutes old are still confirming on '
+                  "Flutterwave's side — try again shortly.",
+        );
+      }
+    } catch (e) {
+      navigator.pop();
+      final message =
+          ApiException.from(e)?.message ?? 'Failed to recheck payments.';
+      if (context.mounted) {
+        _showResultDialog(
+          context,
+          sponsor,
+          ok: false,
+          title: 'Recheck Failed',
+          message: message,
+        );
+      }
+    }
   }
 
   Future<void> _sendThankYou(
@@ -520,6 +580,7 @@ class _PaymentHistoryCard extends StatelessWidget {
   final VoidCallback onRecordPayment;
   final VoidCallback onStartFlutterwave;
   final VoidCallback onSendReminder;
+  final VoidCallback onRecheck;
   final void Function(Payment payment) onVerifyPayment;
   final void Function(Payment payment) onSendThankYou;
 
@@ -528,6 +589,7 @@ class _PaymentHistoryCard extends StatelessWidget {
     required this.onRecordPayment,
     required this.onStartFlutterwave,
     required this.onSendReminder,
+    required this.onRecheck,
     required this.onVerifyPayment,
     required this.onSendThankYou,
   });
@@ -566,6 +628,11 @@ class _PaymentHistoryCard extends StatelessWidget {
                     icon: const Icon(Icons.notifications_outlined, size: 16),
                     label: const Text('Send Reminder'),
                     onPressed: onSendReminder,
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.sync, size: 16),
+                    label: const Text('Recheck Payments'),
+                    onPressed: onRecheck,
                   ),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.credit_card_outlined, size: 16),
