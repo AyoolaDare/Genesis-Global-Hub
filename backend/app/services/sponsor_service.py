@@ -399,10 +399,12 @@ async def verify_flutterwave_payment(
     transaction is successful AND the paid amount/currency match what we
     expected. Idempotent: an already-completed payment is returned as-is.
     """
+    # Row lock (FOR UPDATE; no-op on SQLite) — serialises against the webhook
+    # and reconcile paths so concurrent completion never double-credits.
     payment = db.query(SponsorPayment).filter(
         SponsorPayment.tx_ref == tx_ref,
         SponsorPayment.deleted_at.is_(None),
-    ).first()
+    ).with_for_update().first()
     if not payment:
         raise NotFound(message=f"Payment with ref '{tx_ref}' not found.")
 
@@ -622,6 +624,163 @@ def get_finance_dashboard(db: Session) -> dict:
         "payments_this_month": payments_this_month,
         "overdue_sponsors": overdue_list,
         "recent_payments": recent_payment_list,
+    }
+
+
+def get_finance_ops(db: Session) -> dict:
+    """
+    Operational health snapshot for the finance/sponsorship pipeline.
+
+    Designed for the ops monitoring panel: surfaces everything that can
+    silently go wrong at donor scale — stuck pending payments, thank-you
+    delivery gaps, notification queue backlog/failures, and missing provider
+    credentials — plus human-readable alerts so a finance admin can act
+    without reading logs.
+    """
+    from datetime import timedelta
+
+    from app.models.notification import NotificationQueue
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    stuck_cutoff = now - timedelta(minutes=30)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    def _count(section: str, query_factory) -> int:
+        return int(_safe_dashboard_scalar(db, section, query_factory, 0))
+
+    base_payment = lambda: db.query(func.count(SponsorPayment.id)).filter(  # noqa: E731
+        SponsorPayment.deleted_at.is_(None)
+    )
+
+    pending_count = _count(
+        "ops_pending",
+        lambda: base_payment().filter(SponsorPayment.status == PaymentStatusEnum.PENDING),
+    )
+    stuck_pending = _count(
+        "ops_stuck_pending",
+        lambda: base_payment().filter(
+            SponsorPayment.status == PaymentStatusEnum.PENDING,
+            SponsorPayment.payment_method == "FLUTTERWAVE",
+            SponsorPayment.created_at <= stuck_cutoff,
+        ),
+    )
+    completed_today = _count(
+        "ops_completed_today",
+        lambda: base_payment().filter(
+            SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+            SponsorPayment.payment_date >= today_start,
+        ),
+    )
+    failed_30d = _count(
+        "ops_failed_30d",
+        lambda: base_payment().filter(
+            SponsorPayment.status == PaymentStatusEnum.FAILED,
+            SponsorPayment.updated_at >= month_ago,
+        ),
+    )
+    # Completed in the last 7 days but never thanked — a delivery gap
+    missing_thank_you = _count(
+        "ops_missing_thank_you",
+        lambda: base_payment().filter(
+            SponsorPayment.status == PaymentStatusEnum.COMPLETED,
+            SponsorPayment.thank_you_sent_at.is_(None),
+            SponsorPayment.payment_date >= week_ago,
+        ),
+    )
+
+    oldest_pending = _safe_dashboard_scalar(
+        db,
+        "ops_oldest_pending",
+        lambda: db.query(func.min(SponsorPayment.created_at)).filter(
+            SponsorPayment.deleted_at.is_(None),
+            SponsorPayment.status == PaymentStatusEnum.PENDING,
+            SponsorPayment.payment_method == "FLUTTERWAVE",
+        ),
+        None,
+    )
+    oldest_pending_minutes = None
+    if oldest_pending is not None:
+        if oldest_pending.tzinfo is None:
+            oldest_pending = oldest_pending.replace(tzinfo=timezone.utc)
+        oldest_pending_minutes = max(0, int((now - oldest_pending).total_seconds() // 60))
+
+    nq_pending = _count(
+        "ops_nq_pending",
+        lambda: db.query(func.count(NotificationQueue.id)).filter(
+            NotificationQueue.status == "PENDING"
+        ),
+    )
+    nq_failed = _count(
+        "ops_nq_failed",
+        lambda: db.query(func.count(NotificationQueue.id)).filter(
+            NotificationQueue.status == "FAILED"
+        ),
+    )
+    nq_retrying = _count(
+        "ops_nq_retrying",
+        lambda: db.query(func.count(NotificationQueue.id)).filter(
+            NotificationQueue.status == "PENDING",
+            NotificationQueue.retry_count > 0,
+        ),
+    )
+
+    providers = {
+        "flutterwave_api": bool(settings.FLUTTERWAVE_SECRET_KEY),
+        "flutterwave_webhook": bool(settings.FLUTTERWAVE_SECRET_HASH),
+        "termii_sms": bool(settings.TERMII_API_KEY),
+        "brevo_email": bool(settings.BREVO_API_KEY),
+    }
+
+    alerts: list[str] = []
+    if not providers["flutterwave_api"]:
+        alerts.append(
+            "FLUTTERWAVE_SECRET_KEY is not set — payment links and verification will fail."
+        )
+    if not providers["flutterwave_webhook"]:
+        alerts.append(
+            "FLUTTERWAVE_SECRET_HASH is not set — all Flutterwave webhooks are rejected, "
+            "so payments will not complete automatically."
+        )
+    if not providers["termii_sms"]:
+        alerts.append("TERMII_API_KEY is not set — SMS/WhatsApp notifications will fail.")
+    if not providers["brevo_email"]:
+        alerts.append("BREVO_API_KEY is not set — email notifications will fail.")
+    if stuck_pending > 0:
+        alerts.append(
+            f"{stuck_pending} Flutterwave payment(s) have been pending for over 30 minutes — "
+            "run 'Recheck Payments' or check the webhook configuration."
+        )
+    if missing_thank_you > 0:
+        alerts.append(
+            f"{missing_thank_you} completed payment(s) in the last 7 days have no thank-you "
+            "delivered — resend from the sponsor's payment history."
+        )
+    if nq_failed > 0:
+        alerts.append(
+            f"{nq_failed} queued notification(s) permanently failed — check provider "
+            "credentials and recipient contact details."
+        )
+
+    return {
+        "generated_at": now.isoformat(),
+        "healthy": len(alerts) == 0,
+        "payments": {
+            "pending": pending_count,
+            "stuck_pending": stuck_pending,
+            "oldest_pending_minutes": oldest_pending_minutes,
+            "completed_today": completed_today,
+            "failed_last_30_days": failed_30d,
+            "missing_thank_you_7_days": missing_thank_you,
+        },
+        "notifications": {
+            "queued": nq_pending,
+            "retrying": nq_retrying,
+            "failed": nq_failed,
+        },
+        "providers": providers,
+        "alerts": alerts,
     }
 
 

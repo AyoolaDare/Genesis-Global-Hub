@@ -36,6 +36,7 @@ from app.services.sponsor_service import (
     create_sponsor,
     get_annual_report,
     get_finance_dashboard,
+    get_finance_ops,
     get_sponsor,
     initiate_flutterwave_payment,
     list_all_payments,
@@ -332,6 +333,21 @@ async def finance_dashboard_endpoint(
 ):
     dashboard = get_finance_dashboard(db)
     return success_response(data=dashboard)
+
+
+@router.get("/giving/ops", summary="Giving pipeline health snapshot")
+@router.get("/finance/ops", summary="Finance pipeline health snapshot")
+async def finance_ops_endpoint(
+    current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Operational monitoring for the finance pipeline: stuck pending payments,
+    thank-you delivery gaps, notification queue backlog, provider credential
+    health, and actionable alerts. Powers the System Health panel on the
+    finance dashboard.
+    """
+    return success_response(data=get_finance_ops(db))
 
 
 @router.post("/giving/reconcile-pending", summary="Reconcile pending contributions now")

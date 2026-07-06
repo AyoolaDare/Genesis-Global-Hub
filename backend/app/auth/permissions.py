@@ -116,7 +116,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
     ],
     "FOLLOW_UP": [
         "members:read:basic",
-        "members:create:pending",  # creates land as PENDING
+        "members:create",  # creates land as ACTIVE
         "follow_up:read",
         "follow_up:create",
         "follow_up:update",

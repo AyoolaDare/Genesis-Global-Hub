@@ -28,23 +28,12 @@ from app.services.notification_service import NotificationService, queue_notific
 _ADMIN_ROLES = {
     UserRole.SUPER_ADMIN,
     UserRole.PASTOR,
-}
-
-_SCOPED_ADMIN_ROLES = {
-    UserRole.DEPARTMENT_HEAD,
-    UserRole.TEAM_LEADER,
-    UserRole.GROUP_LEADER,
-}
-
-_LIMITED_ROLES = {
     UserRole.FOLLOW_UP,
-    UserRole.MEDICAL,
 }
-
 
 def _initial_status_for_role(role: UserRole) -> MemberStatusEnum:
     """Determine the initial membership_status based on the creator's role."""
-    if role in _ADMIN_ROLES or role in _SCOPED_ADMIN_ROLES:
+    if role in _ADMIN_ROLES:
         return MemberStatusEnum.ACTIVE
     return MemberStatusEnum.PENDING
 

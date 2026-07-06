@@ -89,6 +89,7 @@ class ApiEndpoints {
   static String verifyContribution(String txRef) =>
       '/giving/contributions/verify/$txRef';
   static const String reconcilePending = '/giving/reconcile-pending';
+  static const String financeOps = '/giving/ops';
   static String verifyFlutterwaveReturn(String txRef) =>
       '/webhooks/flutterwave/verify/$txRef';
   static const String financeReports = '/giving/report/annual';

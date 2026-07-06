@@ -86,14 +86,12 @@ async def list_members_endpoint(
 
 # ── Pending Members ────────────────────────────────────────────────────────────
 
-@router.get("/pending", summary="List pending members (admin only)")
+@router.get("/pending", summary="List pending members (SUPER_ADMIN only)")
 async def list_pending_endpoint(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    current_user: AppUser = Depends(
-        require_role("SUPER_ADMIN", "PASTOR", "DEPARTMENT_HEAD", "TEAM_LEADER", "GROUP_LEADER")
-    ),
+    current_user: AppUser = Depends(require_role("SUPER_ADMIN")),
     db: Session = Depends(get_db),
 ):
     members, total = list_pending_members(db, current_user, request, page, per_page)
@@ -271,17 +269,11 @@ async def delete_member_endpoint(
 
 @router.post("/{member_id}/approve", summary="Approve a pending member")
 async def approve_member_endpoint(
-    request: Request,
     member_id: uuid.UUID,
     body: ApproveRequest,
-    current_user: AppUser = Depends(
-        require_role("SUPER_ADMIN", "PASTOR", "DEPARTMENT_HEAD", "TEAM_LEADER", "GROUP_LEADER")
-    ),
+    current_user: AppUser = Depends(require_role("SUPER_ADMIN")),
     db: Session = Depends(get_db),
 ):
-    if current_user.role in (UserRole.DEPARTMENT_HEAD, UserRole.TEAM_LEADER, UserRole.GROUP_LEADER):
-        ensure_member_scope(member_id, current_user, request, db)
-
     member = get_member(member_id, db)
     member = approve_member(member, current_user, body.admin_notes, db)
     return success_response(
@@ -296,7 +288,7 @@ async def approve_member_endpoint(
 async def reject_member_endpoint(
     member_id: uuid.UUID,
     body: RejectRequest,
-    current_user: AppUser = Depends(require_role("SUPER_ADMIN", "PASTOR")),
+    current_user: AppUser = Depends(require_role("SUPER_ADMIN")),
     db: Session = Depends(get_db),
 ):
     member = get_member(member_id, db)
@@ -313,7 +305,7 @@ async def reject_member_endpoint(
 async def request_info_endpoint(
     member_id: uuid.UUID,
     body: RequestInfoRequest,
-    current_user: AppUser = Depends(require_role("SUPER_ADMIN", "PASTOR")),
+    current_user: AppUser = Depends(require_role("SUPER_ADMIN")),
     db: Session = Depends(get_db),
 ):
     member = get_member(member_id, db)

@@ -160,9 +160,13 @@ async def handle_flutterwave_payment(payload: dict, db: Session) -> None:
     # Locate the pending SponsorPayment created at initiation time.
     # We deliberately do NOT create payment records for unknown tx_refs —
     # an attacker-supplied reference must never mint revenue rows.
+    # Row lock (FOR UPDATE; no-op on SQLite): webhook, redirect-verify and the
+    # reconcile job can all process the same tx_ref concurrently at scale —
+    # the lock serialises them so a payment is never credited or thanked twice.
     payment: Optional[SponsorPayment] = (
         db.query(SponsorPayment)
         .filter(SponsorPayment.tx_ref == tx_ref, SponsorPayment.deleted_at.is_(None))
+        .with_for_update()
         .first()
     )
     if payment is None:
@@ -321,10 +325,13 @@ async def handle_payment_verification(tx_ref: str, db: Session) -> dict:
         "message": "",
     }
 
-    # Look up local payment first
+    # Look up local payment first.
+    # Row lock (FOR UPDATE; no-op on SQLite) — serialises against the webhook
+    # and reconcile paths so concurrent completion never double-credits.
     payment: Optional[SponsorPayment] = (
         db.query(SponsorPayment)
         .filter(SponsorPayment.tx_ref == tx_ref)
+        .with_for_update()
         .first()
     )
 

@@ -59,6 +59,62 @@ final financeDashboardProvider =
 });
 
 // ---------------------------------------------------------------------------
+// Ops health model + provider
+// ---------------------------------------------------------------------------
+
+class FinanceOpsData {
+  final bool healthy;
+  final int pending;
+  final int stuckPending;
+  final int? oldestPendingMinutes;
+  final int completedToday;
+  final int missingThankYou;
+  final int queueFailed;
+  final int queuePending;
+  final Map<String, bool> providers;
+  final List<String> alerts;
+
+  const FinanceOpsData({
+    required this.healthy,
+    required this.pending,
+    required this.stuckPending,
+    required this.oldestPendingMinutes,
+    required this.completedToday,
+    required this.missingThankYou,
+    required this.queueFailed,
+    required this.queuePending,
+    required this.providers,
+    required this.alerts,
+  });
+
+  factory FinanceOpsData.fromJson(Map<String, dynamic> json) {
+    final payments = Map<String, dynamic>.from(json['payments'] ?? {});
+    final notifications = Map<String, dynamic>.from(json['notifications'] ?? {});
+    return FinanceOpsData(
+      healthy: json['healthy'] == true,
+      pending: (payments['pending'] as num?)?.toInt() ?? 0,
+      stuckPending: (payments['stuck_pending'] as num?)?.toInt() ?? 0,
+      oldestPendingMinutes:
+          (payments['oldest_pending_minutes'] as num?)?.toInt(),
+      completedToday: (payments['completed_today'] as num?)?.toInt() ?? 0,
+      missingThankYou:
+          (payments['missing_thank_you_7_days'] as num?)?.toInt() ?? 0,
+      queueFailed: (notifications['failed'] as num?)?.toInt() ?? 0,
+      queuePending: (notifications['queued'] as num?)?.toInt() ?? 0,
+      providers: Map<String, dynamic>.from(json['providers'] ?? {})
+          .map((k, v) => MapEntry(k, v == true)),
+      alerts: List<String>.from(json['alerts'] ?? const []),
+    );
+  }
+}
+
+final financeOpsProvider = FutureProvider<FinanceOpsData>((ref) async {
+  final dio = ref.read(dioProvider);
+  final response = await dio.get(ApiEndpoints.financeOps);
+  return FinanceOpsData.fromJson(response.data['data']);
+});
+
+// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
@@ -81,6 +137,7 @@ class FinanceDashboard extends ConsumerWidget {
         onRefresh: () async {
           ref.invalidate(sponsorProvider);
           ref.invalidate(financeDashboardProvider);
+          ref.invalidate(financeOpsProvider);
           await ref.read(financeDashboardProvider.future);
         },
         child: SingleChildScrollView(
@@ -119,6 +176,8 @@ class FinanceDashboard extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const _SystemHealthSection(),
+        const SizedBox(height: 24),
         Text('Sponsor Overview',
             style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 16),
@@ -188,6 +247,289 @@ class FinanceDashboard extends ConsumerWidget {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: items.length,
       itemBuilder: (_, i) => _StatCard(item: items[i]),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// System health (ops monitoring) section
+// ---------------------------------------------------------------------------
+
+class _SystemHealthSection extends ConsumerWidget {
+  const _SystemHealthSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ops = ref.watch(financeOpsProvider);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ops.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+        error: (e, _) => Row(
+          children: [
+            const Icon(Icons.cloud_off_outlined,
+                color: AppColors.textSecondary, size: 20),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('System health unavailable',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () => ref.invalidate(financeOpsProvider),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+        data: (data) => _buildHealth(context, ref, data),
+      ),
+    );
+  }
+
+  Widget _buildHealth(
+      BuildContext context, WidgetRef ref, FinanceOpsData data) {
+    final statusColor = data.healthy
+        ? AppColors.success
+        : (data.stuckPending > 0 || data.queueFailed > 0
+            ? AppColors.error
+            : AppColors.warning);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  data.healthy
+                      ? Icons.verified_outlined
+                      : Icons.report_problem_outlined,
+                  color: statusColor,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text('System Health',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(width: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    data.healthy ? 'All systems operational' : 'Needs attention',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: statusColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.sync, size: 16),
+              label: const Text('Recheck Payments'),
+              onPressed: () => _recheckPayments(context, ref),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 24,
+          runSpacing: 12,
+          children: [
+            _HealthCounter(
+              label: 'Pending payments',
+              value: '${data.pending}',
+              highlight: data.pending > 0,
+            ),
+            _HealthCounter(
+              label: 'Stuck > 30 min',
+              value: '${data.stuckPending}',
+              highlight: data.stuckPending > 0,
+            ),
+            _HealthCounter(
+              label: 'Completed today',
+              value: '${data.completedToday}',
+            ),
+            _HealthCounter(
+              label: 'Thank-you gaps (7d)',
+              value: '${data.missingThankYou}',
+              highlight: data.missingThankYou > 0,
+            ),
+            _HealthCounter(
+              label: 'Notifications queued',
+              value: '${data.queuePending}',
+            ),
+            _HealthCounter(
+              label: 'Notifications failed',
+              value: '${data.queueFailed}',
+              highlight: data.queueFailed > 0,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _ProviderChip(
+                label: 'Flutterwave API',
+                ok: data.providers['flutterwave_api'] ?? false),
+            _ProviderChip(
+                label: 'Webhook',
+                ok: data.providers['flutterwave_webhook'] ?? false),
+            _ProviderChip(
+                label: 'SMS (Termii)',
+                ok: data.providers['termii_sms'] ?? false),
+            _ProviderChip(
+                label: 'Email (Brevo)',
+                ok: data.providers['brevo_email'] ?? false),
+          ],
+        ),
+        if (data.alerts.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          ...data.alerts.map(
+            (alert) => Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.warning.withOpacity(0.35)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline,
+                      size: 15, color: AppColors.warning),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(alert,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textPrimary)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _recheckPayments(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final dio = ref.read(dioProvider);
+      final response = await dio.post(ApiEndpoints.reconcilePending);
+      final message = (response.data['message'] as String?)?.trim() ??
+          'Recheck completed.';
+      ref.invalidate(financeOpsProvider);
+      ref.invalidate(financeDashboardProvider);
+      messenger.showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: AppColors.success),
+      );
+    } catch (e) {
+      final message =
+          ApiException.from(e)?.message ?? 'Failed to recheck payments.';
+      messenger.showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: AppColors.error),
+      );
+    }
+  }
+}
+
+class _HealthCounter extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool highlight;
+
+  const _HealthCounter({
+    required this.label,
+    required this.value,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: highlight ? AppColors.error : AppColors.textPrimary,
+          ),
+        ),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11, color: AppColors.textSecondary)),
+      ],
+    );
+  }
+}
+
+class _ProviderChip extends StatelessWidget {
+  final String label;
+  final bool ok;
+
+  const _ProviderChip({required this.label, required this.ok});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = ok ? AppColors.success : AppColors.error;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(ok ? Icons.check_circle : Icons.cancel,
+              size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

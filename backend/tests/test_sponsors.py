@@ -435,6 +435,81 @@ def test_finance_dashboard_blocked_for_medical(client, db, medical_user, medical
     assert response.status_code == 403
 
 
+# ── Finance Ops Monitoring ─────────────────────────────────────────────────────
+
+def test_finance_ops_returns_health_snapshot(client, db, finance_user, finance_token):
+    """Ops endpoint returns payment, notification and provider health."""
+    sponsor = create_sponsor(db, full_name="Ops Sponsor", created_by=finance_user.id)
+    create_sponsor_payment(
+        db, sponsor_id=sponsor.id, amount=5000, status=PaymentStatusEnum.PENDING
+    )
+
+    response = client.get("/api/v1/finance/ops", headers=auth_headers(finance_token))
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert "payments" in data
+    assert "notifications" in data
+    assert "providers" in data
+    assert "alerts" in data
+    assert "healthy" in data
+    assert data["payments"]["pending"] >= 1
+    # Test env has no provider keys configured → alerts must call that out
+    assert data["providers"]["flutterwave_api"] in (True, False)
+
+
+def test_finance_ops_flags_missing_thank_you(client, db, finance_user, finance_token):
+    """A recent completed payment without a thank-you shows up as a gap."""
+    from datetime import datetime, timezone
+
+    sponsor = create_sponsor(db, full_name="Gap Sponsor", created_by=finance_user.id)
+    payment = create_sponsor_payment(
+        db, sponsor_id=sponsor.id, amount=5000, status=PaymentStatusEnum.COMPLETED
+    )
+    payment.payment_date = datetime.now(timezone.utc)
+    payment.thank_you_sent_at = None
+    db.flush()
+
+    response = client.get("/api/v1/giving/ops", headers=auth_headers(finance_token))
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["payments"]["missing_thank_you_7_days"] >= 1
+    assert any("thank-you" in a.lower() for a in data["alerts"])
+
+
+def test_finance_ops_blocked_for_non_finance(client, db, hr_user, hr_token):
+    """HR admin must not access the ops snapshot."""
+    response = client.get("/api/v1/finance/ops", headers=auth_headers(hr_token))
+    assert response.status_code == 403
+
+
+def test_reconcile_pending_endpoint_returns_stats(client, db, finance_user, finance_token):
+    """Reconcile endpoint runs the reconcile task synchronously and returns stats."""
+    canned = {"checked": 2, "completed": 2, "failed": 0, "still_pending": 0, "expired": 0}
+    with patch(
+        "app.workers.tasks.payment_tasks.reconcile_pending_payments",
+        return_value=canned,
+    ):
+        response = client.post(
+            "/api/v1/finance/reconcile-pending",
+            headers=auth_headers(finance_token),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["completed"] == 2
+    assert "2 completed" in body["message"]
+
+
+def test_reconcile_pending_blocked_for_non_finance(client, db, hr_user, hr_token):
+    """HR admin must not trigger reconciliation."""
+    response = client.post(
+        "/api/v1/finance/reconcile-pending", headers=auth_headers(hr_token)
+    )
+    assert response.status_code == 403
+
+
 # ── Annual Report ──────────────────────────────────────────────────────────────
 
 def test_annual_report_accessible_by_finance_admin(client, db, finance_user, finance_token):

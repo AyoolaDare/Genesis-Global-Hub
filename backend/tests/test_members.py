@@ -3,7 +3,7 @@ Genesis Global CMS — Member CRUD + Approval Workflow Tests
 
 Covers:
 1.  Super Admin creates member → status = ACTIVE immediately
-2.  Follow-up staff creates member → status = PENDING
+2.  Follow-up staff creates member → status = ACTIVE
 3.  Medical staff cannot create members → 403
 4.  Finance/HR admins cannot create members → 403
 5.  Approve pending member → status = ACTIVE
@@ -76,13 +76,27 @@ def test_pastor_creates_member_active(client, db, pastor_user, pastor_token):
     assert data["membership_status"] == "ACTIVE"
 
 
-def test_follow_up_creates_member_pending(client, db, follow_up_user, follow_up_token):
-    """Follow-up staff created members should land as PENDING."""
+def test_follow_up_creates_member_active(client, db, follow_up_user, follow_up_token):
+    """Follow-up staff created members should land as ACTIVE."""
     with patch("app.services.member_service.run_dedup_check", new=AsyncMock(return_value=[])):
         response = client.post(
             "/api/v1/members",
             json={"full_name": "Pending Convert", "phone": "08012345603"},
             headers=auth_headers(follow_up_token),
+        )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["membership_status"] == "ACTIVE"
+
+
+def test_department_head_creates_member_pending(client, db, department_head_user, department_head_token):
+    """Other allowed roles should require Super Admin approval."""
+    with patch("app.services.member_service.run_dedup_check", new=AsyncMock(return_value=[])):
+        response = client.post(
+            "/api/v1/members",
+            json={"full_name": "Scoped Pending Member", "phone": "08012345613"},
+            headers=auth_headers(department_head_token),
         )
 
     assert response.status_code == 201
@@ -200,6 +214,19 @@ def test_follow_up_cannot_approve_members(client, db, follow_up_user, follow_up_
         f"/api/v1/members/{member.id}/approve",
         json={},
         headers=auth_headers(follow_up_token),
+    )
+
+    assert response.status_code == 403
+
+
+def test_pastor_cannot_approve_members(client, db, pastor_user, pastor_token):
+    """Only Super Admin can review pending member approvals."""
+    member = create_pending_member(db, "Cannot Be Approved By Pastor")
+
+    response = client.post(
+        f"/api/v1/members/{member.id}/approve",
+        json={},
+        headers=auth_headers(pastor_token),
     )
 
     assert response.status_code == 403
@@ -541,8 +568,8 @@ def test_department_head_search_is_limited_to_scope(client, db):
     assert str(outside.id) not in ids
 
 
-def test_department_head_pending_list_is_limited_to_scope(client, db):
-    """Pending approvals must not expose pending members outside scope."""
+def test_department_head_cannot_list_pending_members(client, db):
+    """Only Super Admin can access the pending approval queue."""
     own_dept = create_department(db, "Own Pending Scope")
     foreign_dept = create_department(db, "Foreign Pending Scope")
     head = create_user(db, "pending-scope-head@test.com", UserRole.DEPARTMENT_HEAD)
@@ -562,7 +589,4 @@ def test_department_head_pending_list_is_limited_to_scope(client, db):
         headers=auth_headers(token),
     )
 
-    assert response.status_code == 200
-    ids = {item["id"] for item in response.json()["data"]}
-    assert str(inside.id) in ids
-    assert str(outside.id) not in ids
+    assert response.status_code == 403

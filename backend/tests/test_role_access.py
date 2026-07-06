@@ -269,11 +269,11 @@ def test_has_permission_hr_admin_scope():
     assert has_permission("HR_ADMIN", "sponsors:read") is False
 
 
-def test_has_permission_follow_up_pending_creates():
-    """Follow-up should be able to create members but only as PENDING."""
+def test_has_permission_follow_up_direct_creates():
+    """Follow-up should be able to create members directly."""
     from app.auth.permissions import has_permission
 
-    assert has_permission("FOLLOW_UP", "members:create:pending") is True
+    assert has_permission("FOLLOW_UP", "members:create") is True
     assert has_permission("FOLLOW_UP", "follow_up:read") is True
     assert has_permission("FOLLOW_UP", "medical:read") is False
 
