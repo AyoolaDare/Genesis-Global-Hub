@@ -113,8 +113,8 @@ def test_missing_signature_header_rejected(client):
 
 # ── Payload Variations ─────────────────────────────────────────────────────────
 
-def test_charge_completed_event_queued(client):
-    """charge.completed event should be queued to Celery."""
+def test_charge_completed_event_processed_inline(client):
+    """charge.completed is processed inline (no Celery dependency)."""
     payload = _webhook_payload("charge.completed", "genesis-sponsor-abc123")
     body = json.dumps(payload).encode()
 
@@ -122,10 +122,9 @@ def test_charge_completed_event_queued(client):
         "app.integrations.flutterwave.FlutterwaveClient.verify_webhook_signature",
         return_value=True,
     ), patch(
-        "app.workers.tasks.payment_tasks.process_webhook_payment"
-    ) as mock_task:
-        mock_task.delay = MagicMock()
-
+        "app.integrations.webhook_handlers.handle_flutterwave_payment",
+        new=AsyncMock(),
+    ) as mock_handle:
         response = client.post(
             "/api/v1/webhooks/flutterwave",
             content=body,
@@ -133,8 +132,8 @@ def test_charge_completed_event_queued(client):
         )
 
         assert response.status_code == 200
-        # Celery task should have been queued
-        mock_task.delay.assert_called_once_with(payload)
+        # Payment is completed inline within the request, not deferred to Celery.
+        mock_handle.assert_awaited_once()
 
 
 def test_unknown_event_type_still_returns_200(client):
@@ -424,11 +423,14 @@ def test_webhook_handler_credits_payment_after_api_verification(db):
         "verify_payment",
         new=AsyncMock(return_value=_fw_verification(tx_ref, 50000.0)),
     ) as mock_verify, patch(
-        "app.workers.tasks.notification_tasks.send_payment_thank_you"
-    ) as mock_thanks, patch(
+        "app.integrations.termii.termii.send_templated_message",
+        new=AsyncMock(return_value={"message_id": "sms-1"}),
+    ) as mock_sms, patch(
+        "app.integrations.brevo.BrevoClient.send_email",
+        return_value=True,
+    ), patch(
         "app.workers.tasks.notification_tasks.send_admin_notification"
     ) as mock_admin:
-        mock_thanks.delay = MagicMock()
         mock_admin.delay = MagicMock()
         _run(webhook_handlers.handle_flutterwave_payment(payload=payload, db=db))
 
@@ -436,7 +438,9 @@ def test_webhook_handler_credits_payment_after_api_verification(db):
     assert payment.status == PaymentStatusEnum.COMPLETED
     assert payment.flutterwave_tx_id == "998877"
     assert payment.next_due_date is not None  # MONTHLY sponsor
-    mock_thanks.delay.assert_called_once_with(str(payment.id))
+    # Thank-you is delivered inline (no Celery), stamping thank_you_sent_at.
+    mock_sms.assert_awaited_once()
+    assert payment.thank_you_sent_at is not None
 
 
 def test_webhook_handler_is_idempotent_for_completed_payments(db):

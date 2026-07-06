@@ -100,32 +100,33 @@ async def flutterwave_webhook(
         tx_ref,
     )
 
-    # Queue processing asynchronously via Celery — do NOT block here
-    # This keeps the HTTP response fast and ensures Flutterwave always
-    # receives a 200 for valid signature webhooks.
+    # Process the payment INLINE (synchronously) so completion and the sponsor
+    # thank-you happen the instant Flutterwave calls — with no dependency on a
+    # running Celery worker. handle_flutterwave_payment is idempotent, so a
+    # re-delivered webhook is safe. get_db commits on a clean return.
     try:
-        from app.workers.tasks.payment_tasks import process_webhook_payment
-        process_webhook_payment.delay(payload)
-    except Exception as queue_exc:
-        # Broker unavailable: process inline as a fallback so the payment
-        # event is not lost (Flutterwave will not retry after our 200).
-        # The hourly reconcile_pending_payments job is the second safety net.
+        await webhook_handlers.handle_flutterwave_payment(payload=payload, db=db)
+    except Exception as inline_exc:
+        # Inline processing failed (e.g. Flutterwave verify API hiccup). Fall
+        # back to a Celery enqueue so a worker can retry if one is running; the
+        # hourly reconcile_pending_payments job is the final safety net.
         logger.critical(
-            "Flutterwave webhook: failed to queue Celery task for event=%s tx_ref=%s: %s "
-            "— processing inline as fallback",
+            "Flutterwave webhook: inline processing failed for event=%s tx_ref=%s: %s "
+            "— enqueuing Celery backup",
             event,
             tx_ref,
-            str(queue_exc),
+            str(inline_exc),
             exc_info=True,
         )
         try:
-            await webhook_handlers.handle_flutterwave_payment(payload=payload, db=db)
-        except Exception as inline_exc:
+            from app.workers.tasks.payment_tasks import process_webhook_payment
+            process_webhook_payment.delay(payload)
+        except Exception as queue_exc:
             logger.critical(
-                "Flutterwave webhook: inline fallback processing ALSO failed for tx_ref=%s: %s "
-                "— payment will be picked up by reconcile_pending_payments",
+                "Flutterwave webhook: Celery backup ALSO failed for tx_ref=%s: %s "
+                "— payment will be retried by reconcile_pending_payments",
                 tx_ref,
-                str(inline_exc),
+                str(queue_exc),
                 exc_info=True,
             )
 

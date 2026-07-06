@@ -17,6 +17,85 @@ from app.models.sponsor import Sponsor, SponsorPayment, PaymentStatusEnum
 logger = logging.getLogger(__name__)
 
 
+async def _send_thank_you_inline(db: Session, payment, sponsor) -> None:
+    """
+    Deliver the payment thank-you (SMS/WhatsApp + email) immediately from within
+    the webhook request, so it never depends on a running Celery worker.
+
+    Stamps thank_you_sent_at when at least one channel succeeds and is
+    idempotent (skips if already stamped). Best-effort per channel: a single
+    channel failure is logged but never aborts the others or the webhook.
+    """
+    from app.integrations.termii import termii
+
+    # Idempotency: Flutterwave re-delivers webhooks; never thank twice.
+    if payment.thank_you_sent_at is not None:
+        return
+
+    if not sponsor.phone and not sponsor.email:
+        logger.warning(
+            "Flutterwave webhook: sponsor=%s has no phone/email — thank-you skipped",
+            sponsor.id,
+        )
+        return
+
+    first_name = sponsor.full_name.split()[0] if sponsor.full_name else "Friend"
+    amount_str = f"{float(payment.amount):,.0f}"
+    preferred = (
+        sponsor.preferred_channel.value.lower()
+        if sponsor.preferred_channel
+        else "sms"
+    )
+    sent = False
+
+    if sponsor.email:
+        try:
+            from app.integrations.brevo import BrevoClient
+            html_body = (
+                f"<p>Dear {sponsor.full_name},</p>"
+                f"<p>Thank you for your generous contribution of "
+                f"<strong>&#8358;{amount_str}</strong> to Genesis Global. "
+                f"Your support makes a real difference. God bless you!</p>"
+                f"<p>The Genesis Global Finance Team</p>"
+            )
+            if BrevoClient().send_email(
+                to_email=sponsor.email,
+                subject="Thank You for Your Generosity — Genesis Global",
+                html_content=html_body,
+            ):
+                sent = True
+        except Exception as email_exc:
+            logger.error(
+                "Flutterwave webhook: inline thank-you email error for sponsor=%s: %s",
+                sponsor.id,
+                str(email_exc),
+            )
+
+    if sponsor.phone:
+        phone_channel = "whatsapp" if preferred == "whatsapp" else "generic"
+        try:
+            await termii.send_templated_message(
+                to=sponsor.phone,
+                template_key="payment_thank_you",
+                template_vars={"name": first_name, "amount": amount_str},
+                channel=phone_channel,
+            )
+            sent = True
+        except Exception as sms_exc:
+            logger.error(
+                "Flutterwave webhook: inline thank-you SMS error for sponsor=%s: %s",
+                sponsor.id,
+                str(sms_exc),
+            )
+
+    if sent:
+        payment.thank_you_sent_at = datetime.now(timezone.utc)
+        db.flush()
+        logger.info(
+            "Flutterwave webhook: inline thank-you delivered for payment=%s", payment.id
+        )
+
+
 async def handle_flutterwave_payment(payload: dict, db: Session) -> None:
     """
     Process an incoming Flutterwave webhook payload.
@@ -180,13 +259,13 @@ async def handle_flutterwave_payment(payload: dict, db: Session) -> None:
         next_due,
     )
 
-    # Queue thank-you notification (deferred import to avoid circular)
+    # Send the thank-you INLINE (not via Celery) so it does not depend on a
+    # running worker — the webhook request itself delivers it.
     try:
-        from app.workers.tasks.notification_tasks import send_payment_thank_you
-        send_payment_thank_you.delay(str(payment.id))
+        await _send_thank_you_inline(db=db, payment=payment, sponsor=sponsor)
     except Exception as exc:
         logger.error(
-            "Flutterwave webhook: failed to queue thank-you task for payment=%s: %s",
+            "Flutterwave webhook: inline thank-you failed for payment=%s: %s",
             payment.id,
             str(exc),
         )
