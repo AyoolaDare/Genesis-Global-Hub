@@ -313,6 +313,60 @@ def test_non_finance_cannot_send_reminder(client, db, hr_user, hr_token):
     assert response.status_code == 403
 
 
+# ── Send Thank-You ─────────────────────────────────────────────────────────────
+
+def test_send_thank_you_returns_delivery_result(client, db, finance_user, finance_token):
+    """Send-thank-you invokes the synchronous sender and returns its result."""
+    sponsor = create_sponsor(db, full_name="ThankYou Sponsor", created_by=finance_user.id)
+    sponsor.phone = "08055555555"
+    sponsor.email = "thankyou@sponsor.test"
+    db.flush()
+    payment = create_sponsor_payment(db, sponsor_id=sponsor.id, amount=50000)
+
+    canned = {
+        "success": True,
+        "payment_id": str(payment.id),
+        "channels": ["SMS", "EMAIL"],
+        "message": "Thank-you sent via SMS, EMAIL",
+    }
+    with patch(
+        "app.workers.tasks.notification_tasks.send_payment_thank_you_now",
+        return_value=canned,
+    ) as mock_send:
+        response = client.post(
+            f"/api/v1/sponsors/{sponsor.id}/payments/{payment.id}/send-thank-you",
+            headers=auth_headers(finance_token),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["success"] is True
+    assert "SMS" in body["data"]["message"]
+    mock_send.assert_called_once_with(str(payment.id))
+
+
+def test_send_thank_you_wrong_sponsor_returns_404(client, db, finance_user, finance_token):
+    """A payment that doesn't belong to the given sponsor returns 404."""
+    sponsor_a = create_sponsor(db, full_name="Owner Sponsor", created_by=finance_user.id)
+    sponsor_b = create_sponsor(db, full_name="Other Sponsor", created_by=finance_user.id)
+    payment = create_sponsor_payment(db, sponsor_id=sponsor_a.id, amount=10000)
+
+    response = client.post(
+        f"/api/v1/sponsors/{sponsor_b.id}/payments/{payment.id}/send-thank-you",
+        headers=auth_headers(finance_token),
+    )
+    assert response.status_code == 404
+
+
+def test_non_finance_cannot_send_thank_you(client, db, hr_user, hr_token):
+    """HR admin must not be able to send thank-you messages."""
+    response = client.post(
+        f"/api/v1/sponsors/{uuid.uuid4()}/payments/{uuid.uuid4()}/send-thank-you",
+        headers=auth_headers(hr_token),
+    )
+    assert response.status_code == 403
+
+
 # ── Finance Dashboard ──────────────────────────────────────────────────────────
 
 def test_finance_dashboard_accessible_by_finance_admin(client, db, finance_user, finance_token):

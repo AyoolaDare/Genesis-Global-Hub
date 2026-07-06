@@ -306,6 +306,135 @@ def send_payment_thank_you(payment_id: str) -> dict:
         return result
 
 
+def send_payment_thank_you_now(payment_id: str) -> dict:
+    """
+    Synchronously send (or re-send) the thank-you for a specific payment and
+    return the REAL per-channel delivery result.
+
+    This is the manual / test counterpart to the send_payment_thank_you Celery
+    task. Unlike the task, it does NOT skip on payment status or a prior send —
+    the finance admin is explicitly asking to send now — so it can be used to
+    verify the thank-you pipeline end to end or resend after a transient
+    failure. It still stamps thank_you_sent_at when at least one channel sends.
+
+    Meant to be called from a sync FastAPI endpoint (threadpool) so the internal
+    asyncio.run_until_complete calls are free to create their own event loop.
+
+    Returns:
+        Dict with keys: success, payment_id, channels, message.
+    """
+    from app.integrations.termii import termii
+    from app.models.sponsor import Sponsor, SponsorPayment
+
+    result = {"success": False, "payment_id": payment_id, "channels": [], "message": ""}
+    try:
+        with get_db_context() as db:
+            payment = db.query(SponsorPayment).filter(
+                SponsorPayment.id == uuid.UUID(payment_id),
+                SponsorPayment.deleted_at.is_(None),
+            ).first()
+            if not payment:
+                result["message"] = f"Payment {payment_id} not found"
+                return result
+
+            sponsor: Optional[Sponsor] = db.query(Sponsor).filter(
+                Sponsor.id == payment.sponsor_id,
+                Sponsor.deleted_at.is_(None),
+            ).first()
+            if not sponsor:
+                result["message"] = "Sponsor not found"
+                return result
+
+            if not sponsor.phone and not sponsor.email:
+                result["message"] = "Sponsor has no phone number or email on file"
+                return result
+
+            first_name = sponsor.full_name.split()[0] if sponsor.full_name else "Friend"
+            amount_str = f"{float(payment.amount):,.0f}"
+            preferred = (
+                sponsor.preferred_channel.value.lower()
+                if sponsor.preferred_channel
+                else "sms"
+            )
+
+            sent_channels: list[str] = []
+            failed_channels: list[str] = []
+
+            if sponsor.email:
+                from app.integrations.brevo import BrevoClient
+                brevo = BrevoClient()
+                html_body = (
+                    f"<p>Dear {sponsor.full_name},</p>"
+                    f"<p>Thank you for your generous contribution of "
+                    f"<strong>&#8358;{amount_str}</strong> to Genesis Global. "
+                    f"Your support makes a real difference. God bless you!</p>"
+                    f"<p>The Genesis Global Finance Team</p>"
+                )
+                try:
+                    if brevo.send_email(
+                        to_email=sponsor.email,
+                        subject="Thank You for Your Generosity — Genesis Global",
+                        html_content=html_body,
+                    ):
+                        sent_channels.append("EMAIL")
+                    else:
+                        failed_channels.append("EMAIL")
+                except Exception as email_exc:
+                    logger.error("send_payment_thank_you_now email error: %s", str(email_exc))
+                    failed_channels.append("EMAIL")
+
+            if sponsor.phone:
+                phone_channel = "whatsapp" if preferred == "whatsapp" else "generic"
+                channel_name = "WHATSAPP" if phone_channel == "whatsapp" else "SMS"
+                try:
+                    _run_async(
+                        termii.send_templated_message(
+                            to=sponsor.phone,
+                            template_key="payment_thank_you",
+                            template_vars={"name": first_name, "amount": amount_str},
+                            channel=phone_channel,
+                        )
+                    )
+                    sent_channels.append(channel_name)
+                except Exception as sms_exc:
+                    logger.error(
+                        "send_payment_thank_you_now %s error: %s",
+                        channel_name.lower(),
+                        str(sms_exc),
+                    )
+                    failed_channels.append(channel_name)
+
+            if sent_channels:
+                payment.thank_you_sent_at = datetime.now(timezone.utc)
+                db.flush()
+
+        result["success"] = bool(sent_channels)
+        result["channels"] = sent_channels
+        if sent_channels and failed_channels:
+            result["message"] = (
+                f"Thank-you sent via {', '.join(sent_channels)}; "
+                f"failed via {', '.join(failed_channels)}"
+            )
+        elif sent_channels:
+            result["message"] = f"Thank-you sent via {', '.join(sent_channels)}"
+        else:
+            result["message"] = "Thank-you delivery failed on all channels"
+        logger.info(
+            "send_payment_thank_you_now: payment=%s channels=%s", payment_id, sent_channels
+        )
+        return result
+
+    except Exception as exc:
+        logger.error(
+            "send_payment_thank_you_now error: payment=%s error=%s",
+            payment_id,
+            str(exc),
+            exc_info=True,
+        )
+        result["message"] = str(exc)
+        return result
+
+
 @celery_app.task(name="send_payment_link", acks_late=True)
 def send_payment_link(payment_id: str, payment_link: str) -> dict:
     """

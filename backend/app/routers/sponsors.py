@@ -27,8 +27,10 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_role
 from app.auth.models import AppUser
+from app.core.exceptions import NotFound
 from app.core.responses import paginated_response, success_response
 from app.database import get_db
+from app.models.sponsor import SponsorPayment
 from app.schemas.sponsor import InitiatePaymentRequest, SponsorCreate, SponsorPaymentCreate, SponsorUpdate
 from app.services.sponsor_service import (
     create_sponsor,
@@ -199,6 +201,53 @@ def send_reminder_endpoint(
     return success_response(
         data=result,
         message=result.get("message") or "Reminder processed.",
+    )
+
+
+@router.post(
+    "/giving/supporters/{sponsor_id}/contributions/{payment_id}/send-thank-you",
+    summary="Send (or resend) the thank-you for a contribution now",
+)
+@router.post(
+    "/sponsors/{sponsor_id}/payments/{payment_id}/send-thank-you",
+    summary="Send (or resend) the payment thank-you now",
+)
+def send_thank_you_endpoint(
+    sponsor_id: uuid.UUID,
+    payment_id: uuid.UUID,
+    current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Send (or re-send) the thank-you message for a specific payment immediately
+    by SMS/WhatsApp and email, and return the REAL per-channel delivery result.
+
+    This is the manual counterpart to the automatic thank-you that fires when a
+    Flutterwave payment is confirmed. Use it to verify the thank-you pipeline
+    end to end, or to resend after the automatic one failed. Runs synchronously
+    (plain `def`, threadpool) so the caller gets truthful, immediate feedback.
+    """
+    # Ensure the sponsor exists and the payment belongs to it (404 otherwise).
+    get_sponsor(sponsor_id, db)
+    payment = (
+        db.query(SponsorPayment)
+        .filter(
+            SponsorPayment.id == payment_id,
+            SponsorPayment.sponsor_id == sponsor_id,
+            SponsorPayment.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not payment:
+        raise NotFound(message=f"Payment {payment_id} not found for this sponsor.")
+
+    # Deferred import avoids a circular import at module load time.
+    from app.workers.tasks.notification_tasks import send_payment_thank_you_now
+
+    result = send_payment_thank_you_now(str(payment_id))
+    return success_response(
+        data=result,
+        message=result.get("message") or "Thank-you processed.",
     )
 
 

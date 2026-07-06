@@ -58,6 +58,10 @@ class SponsorDetailScreen extends ConsumerWidget {
                 onStartFlutterwave: () =>
                     _showFlutterwavePaymentSheet(context, ref, sponsor),
                 onSendReminder: () => _sendReminder(context, ref, sponsor),
+                onVerifyPayment: (payment) =>
+                    _verifyPayment(context, ref, sponsor, payment),
+                onSendThankYou: (payment) =>
+                    _sendThankYou(context, ref, sponsor, payment),
               ),
             ],
           ),
@@ -99,14 +103,110 @@ class SponsorDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _sendReminder(
-      BuildContext context, WidgetRef ref, Sponsor sponsor) async {
-    // Capture these before the first await so we never touch a stale context.
-    final messenger = ScaffoldMessenger.of(context);
+      BuildContext context, WidgetRef ref, Sponsor sponsor) {
+    return _postAction(
+      context,
+      ref,
+      sponsor,
+      endpoint: ApiEndpoints.sponsorSendReminder(sponsor.id),
+      okTitle: 'Reminder Sent',
+      failTitle: 'Reminder Not Sent',
+      fallbackError: 'Failed to send reminder.',
+      footnote: 'Ask the supporter to confirm they received the SMS/email.',
+    );
+  }
+
+  Future<void> _sendThankYou(
+      BuildContext context, WidgetRef ref, Sponsor sponsor, Payment payment) {
+    return _postAction(
+      context,
+      ref,
+      sponsor,
+      endpoint: ApiEndpoints.sponsorSendThankYou(sponsor.id, payment.id),
+      okTitle: 'Thank-You Sent',
+      failTitle: 'Thank-You Not Sent',
+      fallbackError: 'Failed to send thank-you.',
+      footnote: 'Ask the supporter to confirm they received the SMS/email.',
+    );
+  }
+
+  /// Shared POST-then-show-evidence flow used by Send Reminder and Send
+  /// Thank-You. The backend runs the send synchronously and returns the real
+  /// per-channel result, so the dialog is genuine proof of what happened.
+  Future<void> _postAction(
+    BuildContext context,
+    WidgetRef ref,
+    Sponsor sponsor, {
+    required String endpoint,
+    required String okTitle,
+    required String failTitle,
+    required String fallbackError,
+    String? footnote,
+  }) async {
     final navigator = Navigator.of(context, rootNavigator: true);
 
-    // Block the UI with a spinner while the reminder is actually sent. The
-    // backend runs the send synchronously and returns the real per-channel
-    // result, so this genuinely waits for delivery to be attempted.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final dio = ref.read(dioProvider);
+      final response = await dio.post(endpoint);
+      navigator.pop(); // dismiss the spinner
+
+      final data = response.data['data'] as Map?;
+      final ok = data != null && data['success'] == true;
+      final serverMessage = (data?['message'] as String?)?.trim();
+      final message = (serverMessage != null && serverMessage.isNotEmpty)
+          ? serverMessage
+          : (ok ? 'Sent successfully.' : 'Could not be sent.');
+
+      if (context.mounted) {
+        _showResultDialog(
+          context,
+          sponsor,
+          ok: ok,
+          title: ok ? okTitle : failTitle,
+          message: message,
+          footnote: ok ? footnote : null,
+        );
+      }
+    } catch (e) {
+      navigator.pop(); // dismiss the spinner
+      final message = ApiException.from(e)?.message ?? fallbackError;
+      if (context.mounted) {
+        _showResultDialog(
+          context,
+          sponsor,
+          ok: false,
+          title: failTitle,
+          message: message,
+        );
+      }
+    }
+  }
+
+  /// Verifies a pending Flutterwave payment against Flutterwave's API and
+  /// shows the real outcome — completed (thank-you auto-fires), still pending,
+  /// or the exact "amount mismatch" reason it could not be credited.
+  Future<void> _verifyPayment(BuildContext context, WidgetRef ref,
+      Sponsor sponsor, Payment payment) async {
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final txRef = payment.reference;
+
+    if (txRef == null || txRef.isEmpty) {
+      _showResultDialog(
+        context,
+        sponsor,
+        ok: false,
+        title: 'Cannot Verify',
+        message: 'This payment has no Flutterwave reference to verify.',
+      );
+      return;
+    }
+
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -116,32 +216,131 @@ class SponsorDetailScreen extends ConsumerWidget {
     try {
       final dio = ref.read(dioProvider);
       final response =
-          await dio.post(ApiEndpoints.sponsorSendReminder(sponsor.id));
-      navigator.pop(); // dismiss the spinner
+          await dio.get(ApiEndpoints.verifyContribution(txRef));
+      navigator.pop();
 
-      final data = response.data['data'] as Map?;
-      final ok = data != null && data['success'] == true;
-      final serverMessage = (data?['message'] as String?)?.trim();
-      final message = (serverMessage != null && serverMessage.isNotEmpty)
-          ? serverMessage
-          : (ok
-              ? 'Reminder sent to ${sponsor.name}'
-              : 'Reminder could not be sent.');
+      final body = response.data as Map;
+      final data = body['data'] as Map?;
+      final status = (data?['status'] as String?)?.toUpperCase() ?? 'UNKNOWN';
+      final notes = (data?['notes'] as String?)?.trim();
+      final ok = status == 'COMPLETED' || status == 'SUCCESSFUL';
 
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: ok ? AppColors.success : AppColors.error,
-        ),
-      );
+      // Prefer the mismatch note (it explains WHY it didn't complete), then
+      // the server message, then a status fallback.
+      final message = (notes != null && notes.isNotEmpty)
+          ? notes
+          : ((body['message'] as String?)?.trim().isNotEmpty == true
+              ? body['message'] as String
+              : 'Flutterwave reports this payment as $status.');
+
+      // Refresh the page so a newly-completed payment shows its updated status.
+      ref.invalidate(sponsorDetailProvider(sponsorId));
+
+      if (context.mounted) {
+        _showResultDialog(
+          context,
+          sponsor,
+          ok: ok,
+          title: ok ? 'Payment Confirmed' : 'Not Yet Confirmed',
+          message: ok
+              ? 'Flutterwave confirmed this payment. A thank-you has been '
+                  'triggered automatically.'
+              : message,
+          footnote: ok
+              ? null
+              : 'If this is an underpayment, record the balance or ask the '
+                  'supporter to complete it.',
+        );
+      }
     } catch (e) {
-      navigator.pop(); // dismiss the spinner
+      navigator.pop();
       final message =
-          ApiException.from(e)?.message ?? 'Failed to send reminder.';
-      messenger.showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: AppColors.error),
-      );
+          ApiException.from(e)?.message ?? 'Failed to verify payment.';
+      if (context.mounted) {
+        _showResultDialog(
+          context,
+          sponsor,
+          ok: false,
+          title: 'Verification Failed',
+          message: message,
+        );
+      }
     }
+  }
+
+  /// Clear pass/fail dialog with the real backend outcome, so the finance
+  /// admin gets solid evidence rather than a snackbar that vanishes.
+  void _showResultDialog(
+    BuildContext context,
+    Sponsor sponsor, {
+    required bool ok,
+    required String title,
+    required String message,
+    String? footnote,
+  }) {
+    final color = ok ? AppColors.success : AppColors.error;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              ok ? Icons.check_circle_outline : Icons.error_outline,
+              color: color,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message,
+              style: const TextStyle(fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.person_outline, size: 16, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${sponsor.name} · ${sponsor.phone ?? 'no phone'}'
+                      ' · ${sponsor.email ?? 'no email'}',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (footnote != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                footnote,
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -321,12 +520,16 @@ class _PaymentHistoryCard extends StatelessWidget {
   final VoidCallback onRecordPayment;
   final VoidCallback onStartFlutterwave;
   final VoidCallback onSendReminder;
+  final void Function(Payment payment) onVerifyPayment;
+  final void Function(Payment payment) onSendThankYou;
 
   const _PaymentHistoryCard({
     required this.sponsor,
     required this.onRecordPayment,
     required this.onStartFlutterwave,
     required this.onSendReminder,
+    required this.onVerifyPayment,
+    required this.onSendThankYou,
   });
 
   @override
@@ -399,6 +602,7 @@ class _PaymentHistoryCard extends StatelessWidget {
                   DataColumn(label: Text('Status')),
                   DataColumn(label: Text('Method')),
                   DataColumn(label: Text('Reference')),
+                  DataColumn(label: Text('Actions')),
                 ],
                 rows: sponsor.payments
                     .map(
@@ -416,6 +620,11 @@ class _PaymentHistoryCard extends StatelessWidget {
                           DataCell(_PaymentStatusBadge(status: p.status)),
                           DataCell(Text(p.method)),
                           DataCell(Text(p.reference ?? '—')),
+                          DataCell(_PaymentActions(
+                            payment: p,
+                            onVerify: () => onVerifyPayment(p),
+                            onSendThankYou: () => onSendThankYou(p),
+                          )),
                         ],
                       ),
                     )
@@ -424,6 +633,62 @@ class _PaymentHistoryCard extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Per-row action buttons in the payment history table.
+///
+/// - "Verify" appears only for pending Flutterwave payments that have a
+///   reference — it re-checks Flutterwave and completes the payment (firing the
+///   thank-you) or shows the exact reason it can't (e.g. an amount mismatch).
+/// - "Thank-You" sends/re-sends the thank-you message and shows real evidence,
+///   handy for testing or after the automatic one failed.
+class _PaymentActions extends StatelessWidget {
+  final Payment payment;
+  final VoidCallback onVerify;
+  final VoidCallback onSendThankYou;
+
+  const _PaymentActions({
+    required this.payment,
+    required this.onVerify,
+    required this.onSendThankYou,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final status = payment.status.toUpperCase();
+    final isPending = status == 'PENDING';
+    final isFlutterwave = payment.method.toUpperCase() == 'FLUTTERWAVE';
+    final canVerify =
+        isPending && isFlutterwave && (payment.reference?.isNotEmpty ?? false);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (canVerify)
+          TextButton.icon(
+            icon: const Icon(Icons.sync, size: 15),
+            label: const Text('Verify'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: onVerify,
+          ),
+        TextButton.icon(
+          icon: const Icon(Icons.favorite_outline, size: 15),
+          label: const Text('Thank-You'),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            foregroundColor: AppColors.secondary,
+          ),
+          onPressed: onSendThankYou,
+        ),
+      ],
     );
   }
 }

@@ -81,9 +81,13 @@ class ApiEndpoints {
   static String sponsorPayments(String id) => '/giving/supporters/$id/contributions';
   static String sponsorSendReminder(String id) =>
       '/giving/supporters/$id/send-reminder';
+  static String sponsorSendThankYou(String sponsorId, String paymentId) =>
+      '/giving/supporters/$sponsorId/contributions/$paymentId/send-thank-you';
   static const String payments = '/giving/contributions';
   static String paymentById(String id) => '/giving/contributions/$id';
   static const String initiatePayment = '/giving/contributions/initiate';
+  static String verifyContribution(String txRef) =>
+      '/giving/contributions/verify/$txRef';
   static String verifyFlutterwaveReturn(String txRef) =>
       '/webhooks/flutterwave/verify/$txRef';
   static const String financeReports = '/giving/report/annual';
