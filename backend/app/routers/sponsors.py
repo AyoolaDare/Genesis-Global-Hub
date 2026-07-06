@@ -162,6 +162,46 @@ async def record_payment_endpoint(
     return success_response(data=_serialize_payment(payment), message="Payment recorded.")
 
 
+@router.post(
+    "/giving/supporters/{sponsor_id}/send-reminder",
+    summary="Send a payment reminder to a supporter now",
+)
+@router.post("/sponsors/{sponsor_id}/send-reminder", summary="Send a payment reminder now")
+def send_reminder_endpoint(
+    sponsor_id: uuid.UUID,
+    current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Send a payment reminder to the sponsor immediately by SMS/WhatsApp and email.
+
+    Unlike the automated overdue-reminder cron job, this runs SYNCHRONOUSLY and
+    returns the REAL per-channel delivery result, so the finance admin gets
+    truthful feedback ("sent via SMS, EMAIL" or the actual error) instead of a
+    blind success toast. Because it is a direct call — not a Celery .delay() —
+    it also works when no Celery worker/Redis is running, which makes it the
+    right tool for verifying the SMS/email pipeline end to end.
+
+    NOTE: This endpoint is deliberately a plain `def` (not `async def`) so it
+    runs in FastAPI's threadpool, where the reminder task's internal
+    `asyncio.run_until_complete` calls are free to spin up their own event loop.
+    """
+    # 404 if the sponsor doesn't exist or is soft-deleted.
+    get_sponsor(sponsor_id, db)
+
+    # Deferred import avoids a circular import at module load time.
+    from app.workers.tasks.notification_tasks import send_payment_reminder
+
+    # Invoke the task body directly (NOT .delay) so we can surface the actual
+    # delivery outcome to the caller instead of a fire-and-forget queue id.
+    result = send_payment_reminder(str(sponsor_id))
+
+    return success_response(
+        data=result,
+        message=result.get("message") or "Reminder processed.",
+    )
+
+
 @router.get(
     "/giving/supporters/{sponsor_id}/contributions",
     summary="Contribution history for a supporter",

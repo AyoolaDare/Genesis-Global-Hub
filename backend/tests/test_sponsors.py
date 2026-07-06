@@ -238,6 +238,81 @@ def test_payment_response_excludes_member_link_id(client, db, finance_user, fina
     assert "member_link_id" not in response.text
 
 
+# ── Send Reminder ──────────────────────────────────────────────────────────────
+
+def test_send_reminder_returns_delivery_result(client, db, finance_user, finance_token):
+    """Send-reminder invokes the reminder task synchronously and returns its
+    real per-channel delivery result to the caller."""
+    sponsor = create_sponsor(db, full_name="Reminder Sponsor", created_by=finance_user.id)
+    sponsor.phone = "08055555555"
+    sponsor.email = "reminder@sponsor.test"
+    db.flush()
+
+    canned = {
+        "success": True,
+        "sponsor_id": str(sponsor.id),
+        "message": "Payment reminder sent via SMS, EMAIL",
+    }
+    with patch(
+        "app.workers.tasks.notification_tasks.send_payment_reminder",
+        return_value=canned,
+    ) as mock_reminder:
+        response = client.post(
+            f"/api/v1/sponsors/{sponsor.id}/send-reminder",
+            headers=auth_headers(finance_token),
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["success"] is True
+    assert "SMS" in body["data"]["message"]
+    mock_reminder.assert_called_once_with(str(sponsor.id))
+
+
+def test_send_reminder_surfaces_delivery_failure(client, db, finance_user, finance_token):
+    """A failed delivery is reported as success=false in the payload (not a 500)."""
+    sponsor = create_sponsor(db, full_name="Failing Reminder Sponsor", created_by=finance_user.id)
+    sponsor.phone = "08055555555"
+    db.flush()
+
+    canned = {
+        "success": False,
+        "sponsor_id": str(sponsor.id),
+        "message": "Payment reminder delivery failed on all channels",
+    }
+    with patch(
+        "app.workers.tasks.notification_tasks.send_payment_reminder",
+        return_value=canned,
+    ):
+        response = client.post(
+            f"/api/v1/sponsors/{sponsor.id}/send-reminder",
+            headers=auth_headers(finance_token),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["success"] is False
+
+
+def test_send_reminder_nonexistent_sponsor_returns_404(client, db, finance_user, finance_token):
+    """Reminding a non-existent sponsor returns 404 before any send is attempted."""
+    fake_id = uuid.uuid4()
+    response = client.post(
+        f"/api/v1/sponsors/{fake_id}/send-reminder",
+        headers=auth_headers(finance_token),
+    )
+    assert response.status_code == 404
+
+
+def test_non_finance_cannot_send_reminder(client, db, hr_user, hr_token):
+    """HR admin must not be able to send sponsor reminders."""
+    response = client.post(
+        f"/api/v1/sponsors/{uuid.uuid4()}/send-reminder",
+        headers=auth_headers(hr_token),
+    )
+    assert response.status_code == 403
+
+
 # ── Finance Dashboard ──────────────────────────────────────────────────────────
 
 def test_finance_dashboard_accessible_by_finance_admin(client, db, finance_user, finance_token):

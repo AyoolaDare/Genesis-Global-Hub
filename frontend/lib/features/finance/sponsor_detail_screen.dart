@@ -57,7 +57,7 @@ class SponsorDetailScreen extends ConsumerWidget {
                     _showRecordPaymentSheet(context, ref, sponsor),
                 onStartFlutterwave: () =>
                     _showFlutterwavePaymentSheet(context, ref, sponsor),
-                onSendReminder: () => _sendReminder(context, sponsor),
+                onSendReminder: () => _sendReminder(context, ref, sponsor),
               ),
             ],
           ),
@@ -98,13 +98,50 @@ class SponsorDetailScreen extends ConsumerWidget {
     );
   }
 
-  void _sendReminder(BuildContext context, Sponsor sponsor) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Reminder sent to ${sponsor.name}'),
-        backgroundColor: AppColors.success,
-      ),
+  Future<void> _sendReminder(
+      BuildContext context, WidgetRef ref, Sponsor sponsor) async {
+    // Capture these before the first await so we never touch a stale context.
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context, rootNavigator: true);
+
+    // Block the UI with a spinner while the reminder is actually sent. The
+    // backend runs the send synchronously and returns the real per-channel
+    // result, so this genuinely waits for delivery to be attempted.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
+
+    try {
+      final dio = ref.read(dioProvider);
+      final response =
+          await dio.post(ApiEndpoints.sponsorSendReminder(sponsor.id));
+      navigator.pop(); // dismiss the spinner
+
+      final data = response.data['data'] as Map?;
+      final ok = data != null && data['success'] == true;
+      final serverMessage = (data?['message'] as String?)?.trim();
+      final message = (serverMessage != null && serverMessage.isNotEmpty)
+          ? serverMessage
+          : (ok
+              ? 'Reminder sent to ${sponsor.name}'
+              : 'Reminder could not be sent.');
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: ok ? AppColors.success : AppColors.error,
+        ),
+      );
+    } catch (e) {
+      navigator.pop(); // dismiss the spinner
+      final message =
+          ApiException.from(e)?.message ?? 'Failed to send reminder.';
+      messenger.showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: AppColors.error),
+      );
+    }
   }
 }
 

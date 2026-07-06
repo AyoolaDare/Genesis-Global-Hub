@@ -79,6 +79,8 @@ class ApiEndpoints {
   static const String sponsors = '/giving/supporters';
   static String sponsorById(String id) => '/giving/supporters/$id';
   static String sponsorPayments(String id) => '/giving/supporters/$id/contributions';
+  static String sponsorSendReminder(String id) =>
+      '/giving/supporters/$id/send-reminder';
   static const String payments = '/giving/contributions';
   static String paymentById(String id) => '/giving/contributions/$id';
   static const String initiatePayment = '/giving/contributions/initiate';
