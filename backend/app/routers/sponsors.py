@@ -334,6 +334,36 @@ async def finance_dashboard_endpoint(
     return success_response(data=dashboard)
 
 
+@router.post("/giving/reconcile-pending", summary="Reconcile pending contributions now")
+@router.post("/finance/reconcile-pending", summary="Reconcile pending payments now")
+def reconcile_pending_endpoint(
+    current_user: AppUser = Depends(require_role(*_FINANCE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """
+    Re-check every PENDING Flutterwave payment against Flutterwave and credit
+    the ones that actually succeeded — the same logic as the hourly reconcile
+    cron, but on demand and SYNCHRONOUSLY (plain `def`, threadpool), so it needs
+    no Celery worker. Use it to clear payments stuck as PENDING because a webhook
+    was missed. Payments confirmed successful are completed and the thank-you is
+    sent inline.
+
+    Note: only payments at least ~15 minutes old are re-checked (younger ones
+    may still be completing on Flutterwave's side).
+    """
+    from app.workers.tasks.payment_tasks import reconcile_pending_payments
+
+    stats = reconcile_pending_payments()
+    message = (
+        f"Checked {stats.get('checked', 0)} pending payment(s): "
+        f"{stats.get('completed', 0)} completed, "
+        f"{stats.get('failed', 0)} failed, "
+        f"{stats.get('still_pending', 0)} still pending, "
+        f"{stats.get('expired', 0)} expired."
+    )
+    return success_response(data=stats, message=message)
+
+
 @router.get("/giving/report/annual", summary="Annual giving report")
 @router.get("/finance/report/annual", summary="Annual sponsorship report")
 async def annual_report_endpoint(

@@ -388,12 +388,13 @@ async def handle_payment_verification(tx_ref: str, db: Session) -> dict:
 
                 db.flush()
 
-                # Queue thank-you notification
-                try:
-                    from app.workers.tasks.notification_tasks import send_payment_thank_you
-                    send_payment_thank_you.delay(str(payment.id))
-                except Exception as exc:
-                    logger.error("Failed to queue thank-you after verify: %s", str(exc))
+                # Send thank-you INLINE (no Celery dependency) so it works even
+                # when no worker is running (e.g. reconcile / redirect verify).
+                if sponsor:
+                    try:
+                        await _send_thank_you_inline(db=db, payment=payment, sponsor=sponsor)
+                    except Exception as exc:
+                        logger.error("Inline thank-you after verify failed: %s", str(exc))
 
                 result["message"] = "Payment verified and recorded successfully"
 
