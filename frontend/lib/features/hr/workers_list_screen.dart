@@ -12,6 +12,14 @@ import '../../core/widgets/pagination_footer.dart';
 import '../../providers/hr_provider.dart';
 import '../../providers/members_provider.dart';
 
+String _formatWorkerType(String type) {
+  final words = type.toLowerCase().split('_');
+  return words
+      .where((word) => word.isNotEmpty)
+      .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
+      .join(' ');
+}
+
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
@@ -34,7 +42,6 @@ class _WorkersListScreenState extends ConsumerState<WorkersListScreen> {
   static const List<String> _employmentTypes = [
     'FULL_TIME',
     'PART_TIME',
-    'CONTRACT',
     'VOLUNTEER',
   ];
 
@@ -126,67 +133,80 @@ class _WorkersListScreenState extends ConsumerState<WorkersListScreen> {
 
   Widget _buildFilters() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
       decoration: const BoxDecoration(
         color: AppColors.white,
         border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search workers...',
-                prefixIcon: const Icon(Icons.search,
-                    color: AppColors.textSecondary),
-                suffixIcon: _search.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _search = '';
-                            _page = 1;
-                          });
-                          ref.read(hrProvider.notifier).refresh();
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide:
-                      const BorderSide(color: AppColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide:
-                      const BorderSide(color: AppColors.border),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 720;
+          final search = TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search workers...',
+              prefixIcon: const Icon(Icons.search,
+                  color: AppColors.textSecondary),
+              suffixIcon: _search.isNotEmpty
+                  ? IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _search = '';
+                          _page = 1;
+                        });
+                        ref.read(hrProvider.notifier).refresh();
+                      },
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.border),
               ),
-              onChanged: _onSearchChanged,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
             ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 180,
-            child: _FilterDropdown(
-              hint: 'Employment Type',
-              selected: _typeFilter,
-              items: _employmentTypes
-                  .map((t) =>
-                      DropdownMenuItem(value: t, child: Text(t.replaceAll('_', ' '))))
-                  .toList(),
-              onChanged: (v) => setState(() {
-                _typeFilter = v;
-                _page = 1;
-              }),
-            ),
-          ),
-        ],
+            onChanged: _onSearchChanged,
+          );
+          final typeFilter = _FilterDropdown(
+            hint: 'Employment Type',
+            selected: _typeFilter,
+            items: _employmentTypes
+                .map((t) => DropdownMenuItem(
+                      value: t,
+                      child: Text(_formatWorkerType(t)),
+                    ))
+                .toList(),
+            onChanged: (v) => setState(() {
+              _typeFilter = v;
+              _page = 1;
+            }),
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                search,
+                const SizedBox(height: 12),
+                typeFilter,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: search),
+              const SizedBox(width: 12),
+              SizedBox(width: 220, child: typeFilter),
+            ],
+          );
+        },
       ),
     );
   }
@@ -199,8 +219,10 @@ class _WorkersListScreenState extends ConsumerState<WorkersListScreen> {
             padding: const EdgeInsets.all(24),
             itemCount: items.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, i) =>
-                _WorkerCard(worker: items[i]),
+            itemBuilder: (context, i) => _WorkerCard(
+              worker: items[i],
+              index: (full.page - 1) * 20 + i + 1,
+            ),
           ),
         ),
         PaginationFooter(
@@ -270,9 +292,13 @@ class _CreateWorkerDialogState extends ConsumerState<_CreateWorkerDialog> {
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
+      final apiError = ApiException.from(e);
+      final message = apiError is ValidationException
+          ? apiError.fieldSummary
+          : apiError?.message ?? 'Failed to create worker.';
       setState(() {
         _isSaving = false;
-        _error = ApiException.from(e)?.message ?? 'Failed to create worker.';
+        _error = message;
       });
     }
   }
@@ -289,70 +315,150 @@ class _CreateWorkerDialogState extends ConsumerState<_CreateWorkerDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Add Worker'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+      contentPadding: const EdgeInsets.fromLTRB(24, 18, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 10, 24, 18),
+      title: const _DialogHeader(),
       content: SizedBox(
-        width: 560,
+        width: 620,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (_error != null) ...[
-                  Text(_error!, style: const TextStyle(color: AppColors.error)),
+                  _ErrorBanner(message: _error!),
+                  const SizedBox(height: 16),
+                ],
+                _SectionLabel(
+                  number: '01',
+                  label: _selectedMember == null
+                      ? 'Link a church member'
+                      : 'Linked church member',
+                ),
+                const SizedBox(height: 10),
+                if (_selectedMember != null) ...[
+                  _SelectedMemberPanel(
+                    member: _selectedMember!,
+                    onClear: () => setState(() => _selectedMember = null),
+                  ),
                   const SizedBox(height: 12),
                 ],
                 TextFormField(
                   controller: _memberSearchController,
                   decoration: const InputDecoration(
-                    labelText: 'Pick Church Member',
+                    labelText: 'Find member',
                     hintText: 'Search by name or phone',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.search_outlined),
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 _WorkerMemberLookup(
                   query: _memberSearchController.text,
                   selected: _selectedMember,
                   onSelected: _applyMember,
                 ),
-                const Divider(height: 24),
+                const SizedBox(height: 20),
+                const _SectionLabel(number: '02', label: 'Worker profile'),
+                const SizedBox(height: 12),
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Full Name *'),
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name *',
+                    border: OutlineInputBorder(),
+                  ),
                   validator: (v) =>
                       v == null || v.trim().isEmpty ? 'Name is required' : null,
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _phoneController,
-                  decoration: const InputDecoration(labelText: 'Phone'),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 520;
+                    final phone = TextFormField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Phone',
+                        border: OutlineInputBorder(),
+                      ),
+                    );
+                    final email = TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        border: OutlineInputBorder(),
+                      ),
+                    );
+                    if (compact) {
+                      return Column(
+                        children: [
+                          phone,
+                          const SizedBox(height: 12),
+                          email,
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: phone),
+                        const SizedBox(width: 12),
+                        Expanded(child: email),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _roleController,
-                  decoration: const InputDecoration(labelText: 'Role / Duty'),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _employmentType,
-                  decoration: const InputDecoration(labelText: 'Worker Type'),
-                  items: const [
-                    DropdownMenuItem(value: 'VOLUNTEER', child: Text('Volunteer')),
-                    DropdownMenuItem(value: 'PART_TIME', child: Text('Part Time')),
-                    DropdownMenuItem(value: 'FULL_TIME', child: Text('Full Time')),
-                    DropdownMenuItem(value: 'CONTRACT', child: Text('Contract')),
-                  ],
-                  onChanged: (v) =>
-                      setState(() => _employmentType = v ?? 'VOLUNTEER'),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 520;
+                    final role = TextFormField(
+                      controller: _roleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Role / Duty',
+                        border: OutlineInputBorder(),
+                      ),
+                    );
+                    final type = DropdownButtonFormField<String>(
+                      value: _employmentType,
+                      decoration: const InputDecoration(
+                        labelText: 'Worker Type',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                            value: 'VOLUNTEER', child: Text('Volunteer')),
+                        DropdownMenuItem(
+                            value: 'PART_TIME', child: Text('Part Time')),
+                        DropdownMenuItem(
+                            value: 'FULL_TIME', child: Text('Full Time')),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _employmentType = v ?? 'VOLUNTEER'),
+                    );
+                    if (compact) {
+                      return Column(
+                        children: [
+                          role,
+                          const SizedBox(height: 12),
+                          type,
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: role),
+                        const SizedBox(width: 12),
+                        SizedBox(width: 210, child: type),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -366,9 +472,157 @@ class _CreateWorkerDialogState extends ConsumerState<_CreateWorkerDialog> {
         ),
         ElevatedButton(
           onPressed: _isSaving ? null : _save,
-          child: Text(_isSaving ? 'Saving...' : 'Create Worker'),
+          child: _isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Create Worker'),
         ),
       ],
+    );
+  }
+}
+
+class _DialogHeader extends StatelessWidget {
+  const _DialogHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        SizedBox(
+          width: 34,
+          child: Text(
+            'HR',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            'Add Worker',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String number;
+  final String label;
+
+  const _SectionLabel({required this.number, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          number,
+          style: const TextStyle(
+            color: AppColors.primary,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.only(top: 1),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: AppColors.border)),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  final String message;
+
+  const _ErrorBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.error.withOpacity(0.35)),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(color: AppColors.error, fontSize: 12),
+      ),
+    );
+  }
+}
+
+class _SelectedMemberPanel extends StatelessWidget {
+  final MemberLookupResult member;
+  final VoidCallback onClear;
+
+  const _SelectedMemberPanel({required this.member, required this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          _Avatar(name: member.fullName),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  member.fullName,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  member.phone ?? member.email ?? 'No contact detail',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Clear linked member',
+            onPressed: onClear,
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -387,9 +641,18 @@ class _WorkerMemberLookup extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (query.trim().length < 2) {
-      return const Text(
-        'Search is optional. Leave blank to create a new worker profile.',
-        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: const Text(
+          'Search is optional. Leave blank to create a new worker profile.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
       );
     }
     final results = ref.watch(memberLookupProvider(query));
@@ -399,20 +662,98 @@ class _WorkerMemberLookup extends ConsumerWidget {
         'Could not search members: $e',
         style: const TextStyle(color: AppColors.error, fontSize: 12),
       ),
-      data: (members) => Column(
-        children: members
-            .take(5)
-            .map(
-              (m) => RadioListTile<String>(
-                value: m.id,
-                groupValue: selected?.id,
-                onChanged: (_) => onSelected(m),
-                title: Text(m.fullName),
-                subtitle: Text(m.phone ?? 'No phone'),
-                dense: true,
+      data: (members) {
+        if (members.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: const Text(
+              'No matching members found.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
+          );
+        }
+        return Column(
+          children: members
+              .take(5)
+              .map(
+                (m) => _MemberLookupRow(
+                  member: m,
+                  selected: selected?.id == m.id,
+                  onSelected: () => onSelected(m),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+}
+
+class _MemberLookupRow extends StatelessWidget {
+  final MemberLookupResult member;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  const _MemberLookupRow({
+    required this.member,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onSelected,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary.withOpacity(0.06) : AppColors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected
+                ? AppColors.primary.withOpacity(0.55)
+                : AppColors.border,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              size: 18,
+              color: selected ? AppColors.primary : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    member.fullName,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    member.phone ?? member.email ?? 'No contact detail',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
-            )
-            .toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -424,31 +765,37 @@ class _WorkerMemberLookup extends ConsumerWidget {
 
 class _WorkerCard extends StatelessWidget {
   final Worker worker;
+  final int index;
 
-  const _WorkerCard({required this.worker});
+  const _WorkerCard({required this.worker, required this.index});
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () => context.go('/hr/workers/${worker.id}'),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: AppColors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 6,
-              offset: Offset(0, 2),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
         ),
         child: Row(
           children: [
+            SizedBox(
+              width: 36,
+              child: Text(
+                index.toString().padLeft(2, '0'),
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
             _Avatar(name: worker.fullName),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -485,7 +832,7 @@ class _WorkerCard extends StatelessWidget {
               ),
             ),
             _StatusDot(status: worker.status),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             const Icon(Icons.chevron_right,
                 size: 20, color: AppColors.textSecondary),
           ],
@@ -508,7 +855,7 @@ class _Avatar extends StatelessWidget {
       height: 44,
       decoration: BoxDecoration(
         color: AppColors.primary.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Center(
         child: Text(
@@ -535,8 +882,6 @@ class _TypeBadge extends StatelessWidget {
         return AppColors.primary;
       case 'PART_TIME':
         return AppColors.info;
-      case 'CONTRACT':
-        return AppColors.warning;
       case 'VOLUNTEER':
         return AppColors.secondary;
       default:
@@ -554,7 +899,7 @@ class _TypeBadge extends StatelessWidget {
         border: Border.all(color: _color.withOpacity(0.3)),
       ),
       child: Text(
-        type.replaceAll('_', ' '),
+        _formatWorkerType(type),
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w600,

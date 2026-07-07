@@ -270,19 +270,15 @@ class _SystemHealthSection extends ConsumerWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.primaryDark, AppColors.primary],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
           BoxShadow(
-            color: AppColors.primaryDark.withOpacity(0.35),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: AppColors.cardShadow,
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -290,23 +286,21 @@ class _SystemHealthSection extends ConsumerWidget {
         loading: () => const Padding(
           padding: EdgeInsets.symmetric(vertical: 16),
           child: Center(
-            child: CircularProgressIndicator(
-                strokeWidth: 2, color: AppColors.white),
+            child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
         error: (e, _) => Row(
           children: [
             const Icon(Icons.cloud_off_outlined,
-                color: Colors.white70, size: 20),
+                color: AppColors.textSecondary, size: 20),
             const SizedBox(width: 8),
             const Expanded(
               child: Text('System health unavailable',
-                  style: TextStyle(color: Colors.white70)),
+                  style: TextStyle(color: AppColors.textSecondary)),
             ),
             TextButton(
               onPressed: () => ref.invalidate(financeOpsProvider),
-              child: const Text('Retry',
-                  style: TextStyle(color: AppColors.secondaryLight)),
+              child: const Text('Retry'),
             ),
           ],
         ),
@@ -318,10 +312,10 @@ class _SystemHealthSection extends ConsumerWidget {
   Widget _buildHealth(
       BuildContext context, WidgetRef ref, FinanceOpsData data) {
     final statusColor = data.healthy
-        ? AppColors.successLight
+        ? AppColors.success
         : (data.stuckPending > 0 || data.queueFailed > 0
-            ? AppColors.errorLight
-            : AppColors.warningLight);
+            ? AppColors.error
+            : AppColors.warning);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,65 +325,48 @@ class _SystemHealthSection extends ConsumerWidget {
           alignment: WrapAlignment.spaceBetween,
           crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 12,
-          runSpacing: 12,
+          runSpacing: 8,
           children: [
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    data.healthy
-                        ? Icons.verified_outlined
-                        : Icons.report_problem_outlined,
-                    color: statusColor,
-                    size: 22,
-                  ),
+                Icon(
+                  data.healthy
+                      ? Icons.check_circle_outline
+                      : Icons.report_problem_outlined,
+                  color: statusColor,
+                  size: 20,
                 ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'System Health',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.white,
-                      ),
+                const SizedBox(width: 8),
+                Text('System Health',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    data.healthy ? 'All good' : 'Needs attention',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: statusColor,
                     ),
-                    Text(
-                      data.healthy
-                          ? 'All systems operational'
-                          : 'Needs attention',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: statusColor,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.white,
-                foregroundColor: AppColors.primary,
-                elevation: 0,
-              ),
+            TextButton.icon(
+              onPressed: () => _recheckPayments(context, ref),
               icon: const Icon(Icons.sync, size: 16),
               label: const Text('Recheck Payments'),
-              onPressed: () => _recheckPayments(context, ref),
             ),
           ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
 
         // ── Counters ──────────────────────────────────────────────────────
         Wrap(
@@ -414,7 +391,7 @@ class _SystemHealthSection extends ConsumerWidget {
                 highlight: data.queueFailed > 0),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // ── Provider status ───────────────────────────────────────────────
         Wrap(
@@ -438,32 +415,32 @@ class _SystemHealthSection extends ConsumerWidget {
 
         // ── Alerts ────────────────────────────────────────────────────────
         if (data.alerts.isNotEmpty) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           ...data.alerts.map(
             (alert) => Container(
               width: double.infinity,
               margin: const EdgeInsets.only(bottom: 6),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: AppColors.warningLight.withOpacity(0.45)),
+                color: AppColors.warning.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+                border:
+                    Border.all(color: AppColors.warning.withOpacity(0.2)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(Icons.info_outline,
-                      size: 15, color: AppColors.warningLight),
+                      size: 15, color: AppColors.warning),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       alert,
                       style: const TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: AppColors.white),
+                        fontSize: 12,
+                        height: 1.35,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
                 ],
@@ -514,12 +491,12 @@ class _HealthCounter extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 108),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: highlight
-              ? AppColors.errorLight.withOpacity(0.6)
-              : Colors.white.withOpacity(0.12),
+              ? AppColors.error.withOpacity(0.3)
+              : AppColors.border,
         ),
       ),
       child: Column(
@@ -529,14 +506,15 @@ class _HealthCounter extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: highlight ? AppColors.errorLight : AppColors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: highlight ? AppColors.error : AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 2),
           Text(label,
-              style: const TextStyle(fontSize: 11, color: Colors.white70)),
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
         ],
       ),
     );
@@ -551,13 +529,12 @@ class _ProviderChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = ok ? AppColors.successLight : AppColors.errorLight;
+    final color = ok ? AppColors.success : AppColors.error;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.55)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -570,10 +547,10 @@ class _ProviderChip extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: AppColors.white,
+              color: color,
             ),
           ),
         ],

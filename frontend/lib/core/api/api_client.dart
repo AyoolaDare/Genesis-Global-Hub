@@ -54,6 +54,13 @@ class ValidationException extends ApiException {
     super.code,
     this.fieldErrors = const {},
   }) : super(statusCode: 422);
+
+  String get fieldSummary {
+    if (fieldErrors.isEmpty) return message;
+    return fieldErrors.entries
+        .map((entry) => '${entry.key}: ${entry.value.join(', ')}')
+        .join('\n');
+  }
 }
 
 class ServerException extends ApiException {
@@ -191,6 +198,18 @@ class _ResponseInterceptor extends Interceptor {
                   ? v.map((e) => e.toString()).toList()
                   : [v.toString()];
             });
+          } else if (data is Map &&
+              data['error'] is Map &&
+              (data['error'] as Map)['details'] is List) {
+            final details = (data['error'] as Map)['details'] as List;
+            for (final detail in details) {
+              if (detail is! Map) continue;
+              final rawField = detail['field']?.toString() ?? 'field';
+              final field = rawField.replaceFirst('body -> ', '');
+              final fieldMessage =
+                  detail['message']?.toString() ?? 'Validation error';
+              fieldErrors.putIfAbsent(field, () => []).add(fieldMessage);
+            }
           }
           apiError = ValidationException(
               message: message, code: code, fieldErrors: fieldErrors);

@@ -589,8 +589,6 @@ class _TypeBadge extends StatelessWidget {
         return AppColors.primary;
       case 'PART_TIME':
         return AppColors.info;
-      case 'CONTRACT':
-        return AppColors.warning;
       case 'VOLUNTEER':
         return AppColors.secondary;
       default:
